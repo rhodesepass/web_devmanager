@@ -11,6 +11,7 @@
     "type-check": "vue-tsc --build --force",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
+    "deploy": "bash scripts/deploy.sh",
     "mcp": "ruler apply",
     "mcp:revert": "ruler revert"
   },

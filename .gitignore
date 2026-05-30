@@ -12,3 +12,4 @@ doc/
 .vscode/
 .history/
 public/asset2share/
+scripts/deploy.sh

@@ -1,15 +1,19 @@
 <template>
-  <div :class="{ 'material-share--embed': isEmbed }">
-    <PageHeader
-      v-if="!isEmbed"
-      subtitle="无需连接设备即可浏览与下载；连接后可传入通行证"
-      title="素材预览"
-    />
+  <div
+    class="material-share"
+    :class="{ 'material-share--embed': isEmbed }"
+  >
+    <div class="material-share-top">
+      <PageHeader
+        v-if="!isEmbed"
+        subtitle="无需连接设备即可浏览与下载；连接后可传入通行证"
+        title="素材预览"
+      />
 
-    <div
-      class="d-flex flex-wrap align-center ga-3 mb-4"
-      :class="{ 'sticky-search': isEmbed }"
-    >
+      <div
+        class="d-flex flex-wrap align-center ga-3 mb-4"
+        :class="{ 'sticky-search': isEmbed }"
+      >
       <v-text-field
         v-model="searchQuery"
         autocomplete="off"
@@ -47,9 +51,9 @@
       >
         刷新
       </v-btn>
-    </div>
+      </div>
 
-    <v-alert
+      <v-alert
       v-if="loadError"
       class="mb-4"
       type="error"
@@ -111,36 +115,50 @@
         {{ formatBytes(transferProgress.bytes) }} / {{ formatBytes(transferProgress.total) }}
       </div>
     </v-card>
-
-    <div v-if="loading && allAssets.length === 0" class="d-flex justify-center py-12">
-      <v-progress-circular color="primary" indeterminate />
     </div>
 
-    <v-row v-else-if="filteredAssets.length > 0">
-      <v-col
-        v-for="asset in filteredAssets"
-        :key="asset.uuid"
-        cols="6"
-        lg="2"
-        md="3"
-        sm="4"
-      >
-        <SharedMaterialCard
-          :asset="asset"
-          :disabled="busy"
-          :downloading="downloadingAssetUuid === asset.uuid"
-          @download="onDownloadClick"
-        />
-      </v-col>
-    </v-row>
+    <div class="material-share-body">
+      <div v-if="loading && allAssets.length === 0" class="d-flex justify-center py-12">
+        <v-progress-circular color="primary" indeterminate />
+      </div>
 
-    <v-alert
-      v-else-if="!loading"
-      type="info"
-      variant="tonal"
-    >
-      {{ searchQuery.trim() ? '没有匹配的素材' : '素材清单为空' }}
-    </v-alert>
+      <v-virtual-scroll
+        v-else-if="assetRows.length > 0"
+        class="material-grid-scroll"
+        height="100%"
+        :item-height="ROW_HEIGHT"
+        item-key="key"
+        :items="assetRows"
+      >
+        <template #default="{ item: row }">
+          <v-row class="material-grid-row" dense>
+            <v-col
+              v-for="asset in row.assets"
+              :key="asset.uuid"
+              cols="6"
+              lg="2"
+              md="3"
+              sm="4"
+            >
+              <SharedMaterialCard
+                :asset="asset"
+                :disabled="busy"
+                :downloading="downloadingAssetUuid === asset.uuid"
+                @download="onDownloadClick"
+              />
+            </v-col>
+          </v-row>
+        </template>
+      </v-virtual-scroll>
+
+      <v-alert
+        v-else-if="!loading"
+        type="info"
+        variant="tonal"
+      >
+        {{ searchQuery.trim() ? '没有匹配的素材' : '素材清单为空' }}
+      </v-alert>
+    </div>
 
     <v-dialog v-if="!isEmbed" v-model="showTargetDialog" max-width="400">
       <v-card title="选择下载方式">
@@ -211,6 +229,7 @@
   import type { MaterialStorage, SharedMaterialAsset } from '@/types/material'
   import { computed, onMounted, ref, toRef } from 'vue'
   import { useRouter } from 'vue-router'
+  import { useDisplay } from 'vuetify'
   import PageHeader from '@/components/PageHeader.vue'
   import { useEmbedMode } from '@/composables/useEmbedMode'
   import SharedMaterialCard from '@/components/SharedMaterialCard.vue'
@@ -227,7 +246,16 @@
     triggerSharedMaterialLocalDownload,
   } from '@/utils/sharedMaterials'
 
+  /** 与 SharedMaterialCard 布局对齐的固定行高（px） */
+  const ROW_HEIGHT = 460
+
+  interface MaterialAssetRow {
+    key: string
+    assets: SharedMaterialAsset[]
+  }
+
   const router = useRouter()
+  const { smAndUp, mdAndUp, lgAndUp } = useDisplay()
   const { isEmbed } = useEmbedMode()
   const { notify } = useNotifications()
   const transferLock = useTransferLock()
@@ -263,6 +291,33 @@
   const filteredAssets = computed(() =>
     filterSharedMaterials(allAssets.value, searchQuery.value),
   )
+
+  const columnsPerRow = computed(() => {
+    if (lgAndUp.value) {
+      return 6
+    }
+    if (mdAndUp.value) {
+      return 4
+    }
+    if (smAndUp.value) {
+      return 3
+    }
+    return 2
+  })
+
+  const assetRows = computed((): MaterialAssetRow[] => {
+    const assets = filteredAssets.value
+    const cols = columnsPerRow.value
+    const rows: MaterialAssetRow[] = []
+    for (let i = 0; i < assets.length; i += cols) {
+      const chunk = assets.slice(i, i + cols)
+      rows.push({
+        key: chunk.map(a => a.uuid).join('|'),
+        assets: chunk,
+      })
+    }
+    return rows
+  })
 
   const busy = computed(
     () => loading.value || downloading.value || transferring.value,
@@ -401,8 +456,33 @@
 </script>
 
 <style scoped>
+.material-share {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 48px);
+}
+
 .material-share--embed {
+  height: 100vh;
   min-height: 100vh;
+}
+
+.material-share-top {
+  flex-shrink: 0;
+}
+
+.material-share-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.material-grid-scroll {
+  height: 100%;
+}
+
+.material-grid-row {
+  margin-bottom: 0;
 }
 
 .sticky-search {
