@@ -13,6 +13,7 @@ import {
   sanitizeZipFilename,
   triggerBlobDownload,
 } from '@/utils/zipMaterial'
+import { formatBytes } from '@/utils/format'
 import { useNotifications } from './useNotifications'
 import { useTransferLock } from './useTransferLock'
 
@@ -33,6 +34,41 @@ function revokeIconUrls (materials: RemoteMaterial[]) {
   }
 }
 
+async function assertStorageCapacity (
+  client: UsbResponderClient,
+  storage: MaterialStorage,
+  requiredBytes: number,
+): Promise<void> {
+  const devInfo = await client.devinfo()
+  const label = MATERIAL_STORAGES[storage].displayLabel
+
+  if (storage === 'sd' && devInfo.sd_mounted !== '1') {
+    throw new Error('SD 卡未挂载，无法上传到 SD 存储')
+  }
+
+  const freeKey = storage === 'nand' ? 'nand_free_bytes' : 'sd_free_bytes'
+  const freeBytes = Number.parseInt(devInfo[freeKey] ?? '0', 10)
+  if (requiredBytes > freeBytes) {
+    throw new Error(
+      `${label} 存储空间不足：需要 ${formatBytes(requiredBytes)}，剩余 ${formatBytes(freeBytes)}`,
+    )
+  }
+}
+
+async function materialExistsOnStorage (
+  client: UsbResponderClient,
+  storage: MaterialStorage,
+  uuid: string,
+): Promise<boolean> {
+  const cfg = MATERIAL_STORAGES[storage]
+  try {
+    const listing = await client.fileList(cfg.assetsBasePath)
+    return listing.dirs.some(d => d.trim().replace(/\/$/, '') === uuid)
+  } catch {
+    return false
+  }
+}
+
 export function useMaterials (
   client: Ref<UsbResponderClient | null>,
   sdMounted: Ref<boolean>,
@@ -43,6 +79,7 @@ export function useMaterials (
   const loading = ref(false)
   const transferring = ref(false)
   const transferProgress = ref<TransferProgress | null>(null)
+  let iconLoadGeneration = 0
 
   const storageOptions = computed(() => {
     const opts = [MATERIAL_STORAGES.nand]
@@ -108,21 +145,7 @@ export function useMaterials (
           }
         }
 
-        let iconUrl: string | null = null
-        if (parsed.iconRelativePath) {
-          try {
-            const iconBytes = await client.value.fileGet(
-              `${basePath}/${parsed.iconRelativePath}`,
-            )
-            const mime = guessImageMime(parsed.iconRelativePath)
-            const iconCopy = new Uint8Array(iconBytes)
-            iconUrl = URL.createObjectURL(new Blob([iconCopy], { type: mime }))
-          } catch {
-            // icon download failure is non-fatal
-          }
-        }
-
-        const info = toMaterialInfo(parsed, files.length, totalBytes, iconUrl)
+        const info = toMaterialInfo(parsed, files.length, totalBytes, null)
         result.push({
           info,
           storage,
@@ -135,6 +158,52 @@ export function useMaterials (
     return result
   }
 
+  async function loadIconsInBackground (generation: number) {
+    const c = client.value
+    if (!c) {
+      return
+    }
+
+    for (const item of materials.value) {
+      if (generation !== iconLoadGeneration || !client.value) {
+        return
+      }
+      const iconPath = item.info.iconRelativePath
+      if (!iconPath || item.info.iconUrl) {
+        continue
+      }
+
+      const basePath = materialDirPath(item.storage, item.info.uuid)
+      try {
+        const iconBytes = await c.fileGet(`${basePath}/${iconPath}`)
+        if (generation !== iconLoadGeneration) {
+          return
+        }
+
+        const mime = guessImageMime(iconPath)
+        const iconCopy = new Uint8Array(iconBytes)
+        const iconUrl = URL.createObjectURL(new Blob([iconCopy], { type: mime }))
+
+        const idx = materials.value.findIndex(m => m.listKey === item.listKey)
+        if (idx < 0 || generation !== iconLoadGeneration) {
+          URL.revokeObjectURL(iconUrl)
+          return
+        }
+
+        const current = materials.value[idx]
+        if (current.info.iconUrl) {
+          URL.revokeObjectURL(current.info.iconUrl)
+        }
+        materials.value[idx] = {
+          ...current,
+          info: { ...current.info, iconUrl },
+        }
+      } catch {
+        // icon download failure is non-fatal
+      }
+    }
+  }
+
   async function refresh () {
     if (!client.value) {
       revokeIconUrls(materials.value)
@@ -142,17 +211,33 @@ export function useMaterials (
       return
     }
     loading.value = true
+    iconLoadGeneration += 1
+    const generation = iconLoadGeneration
     try {
       revokeIconUrls(materials.value)
       const nand = await listStorage('nand')
       const sd = sdMounted.value ? await listStorage('sd') : []
       materials.value = [...nand, ...sd]
+      void loadIconsInBackground(generation)
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       notify(`加载素材列表失败: ${msg}`, 'error')
     } finally {
       loading.value = false
     }
+  }
+
+  async function findExistingMaterialStorage (uuid: string): Promise<MaterialStorage | null> {
+    if (!client.value) {
+      return null
+    }
+    if (await materialExistsOnStorage(client.value, 'nand', uuid)) {
+      return 'nand'
+    }
+    if (sdMounted.value && await materialExistsOnStorage(client.value, 'sd', uuid)) {
+      return 'sd'
+    }
+    return null
   }
 
   async function uploadZip (file: File, storage: MaterialStorage) {
@@ -165,8 +250,18 @@ export function useMaterials (
 
     try {
       const extracted = await extractMaterialFromZip(file)
+      const existingStorage = await findExistingMaterialStorage(extracted.uuid)
+      if (existingStorage) {
+        const label = MATERIAL_STORAGES[existingStorage].displayLabel
+        notify(`设备上已存在该素材「${extracted.name}」（${label}），已跳过上传`, 'warning')
+        return
+      }
+
       const dirPath = materialDirPath(storage, extracted.uuid)
       const totalBytes = extracted.files.reduce((sum, f) => sum + f.data.byteLength, 0)
+
+      await assertStorageCapacity(client.value, storage, totalBytes)
+
       let sent = 0
 
       await client.value.dirMkdir(dirPath, true)

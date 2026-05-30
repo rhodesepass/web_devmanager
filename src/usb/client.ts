@@ -13,9 +13,7 @@ export class UsbResponderClient {
   constructor (readonly transport: UsbTransport) {}
 
   async hello (): Promise<KvMap> {
-    const rid = this.transport.nextId()
-    await this.transport.sendFrame(MsgType.HELLO, new Uint8Array(0), rid)
-    return this.expectKv(rid)
+    return this.requestKv(MsgType.HELLO, new Uint8Array(0))
   }
 
   async devinfo (): Promise<KvMap> {
@@ -34,10 +32,7 @@ export class UsbResponderClient {
   }
 
   async fileList (path: string): Promise<{ files: string[]; dirs: string[] }> {
-    const rid = this.transport.nextId()
-    const payload = encodeKv([['path', path]])
-    await this.transport.sendFrame(MsgType.FILE_LIST, payload, rid)
-    const kv = await this.expectKv(rid)
+    const kv = await this.requestKv(MsgType.FILE_LIST, encodeKv([['path', path]]))
     return {
       files: kv.files ? kv.files.split('\n').filter(Boolean) : [],
       dirs: kv.dirs ? kv.dirs.split('\n').filter(Boolean) : [],
@@ -45,10 +40,7 @@ export class UsbResponderClient {
   }
 
   async fileStat (path: string): Promise<KvMap> {
-    const rid = this.transport.nextId()
-    const payload = encodeKv([['path', path]])
-    await this.transport.sendFrame(MsgType.FILE_STAT, payload, rid)
-    return this.expectKv(rid)
+    return this.requestKv(MsgType.FILE_STAT, encodeKv([['path', path]]))
   }
 
   async filePut (
@@ -56,6 +48,11 @@ export class UsbResponderClient {
     remotePath: string,
     onProgress?: (sent: number, total: number) => void,
   ): Promise<void> {
+    const parent = parentDir(remotePath)
+    if (parent) {
+      await this.dirMkdir(parent, true)
+    }
+
     const rid = this.transport.nextId()
 
     // FILE_PUT_BEGIN
@@ -101,25 +98,17 @@ export class UsbResponderClient {
   }
 
   async fileDelete (path: string): Promise<void> {
-    const rid = this.transport.nextId()
-    const payload = encodeKv([['path', path]])
-    await this.transport.sendFrame(MsgType.FILE_DELETE, payload, rid)
-    await this.expectKv(rid)
+    await this.requestKv(MsgType.FILE_DELETE, encodeKv([['path', path]]))
   }
 
   async fileRename (from: string, to: string): Promise<void> {
-    const rid = this.transport.nextId()
-    const payload = encodeKv([['from', from], ['to', to]])
-    await this.transport.sendFrame(MsgType.FILE_RENAME, payload, rid)
-    await this.expectKv(rid)
+    await this.requestKv(MsgType.FILE_RENAME, encodeKv([['from', from], ['to', to]]))
   }
 
   async dirMkdir (path: string, parents = false): Promise<void> {
-    const rid = this.transport.nextId()
     const items: [string, string][] = [['path', path]]
     if (parents) items.push(['parents', '1'])
-    await this.transport.sendFrame(MsgType.FILE_MKDIR, encodeKv(items), rid)
-    await this.expectKv(rid)
+    await this.requestKv(MsgType.FILE_MKDIR, encodeKv(items))
   }
 
   async commandExec (
@@ -146,10 +135,29 @@ export class UsbResponderClient {
     return decodeCommandResult(frame.payload)
   }
 
+  private async requestKv (type: MsgType, payload: Uint8Array): Promise<KvMap> {
+    const sendOnce = async (): Promise<KvMap> => {
+      const rid = this.transport.nextId()
+      await this.transport.sendFrame(type, payload, rid)
+      return this.expectKv(rid)
+    }
+    try {
+      return await sendOnce()
+    } catch (error: unknown) {
+      if (isRequestIdMismatch(error)) {
+        return sendOnce()
+      }
+      throw error
+    }
+  }
+
   private async expectKv (reqId: number): Promise<KvMap> {
-    const frame = await this.transport.recvFrame()
+    let frame = await this.transport.recvFrame()
     if (frame.requestId !== reqId) {
-      throw new Error(`request_id mismatch: expected ${reqId}, got ${frame.requestId}`)
+      frame = await this.transport.recvFrame()
+      if (frame.requestId !== reqId) {
+        throw new Error(`request_id mismatch: expected ${reqId}, got ${frame.requestId}`)
+      }
     }
     if (frame.type === MsgType.ERROR) {
       const kv = decodeKv(frame.payload)
@@ -160,4 +168,17 @@ export class UsbResponderClient {
     }
     return decodeKv(frame.payload)
   }
+}
+
+function isRequestIdMismatch (error: unknown): boolean {
+  return error instanceof Error && error.message.includes('request_id mismatch')
+}
+
+/** 相对路径的父目录；无 `/` 时返回 null。 */
+function parentDir (filePath: string): string | null {
+  const i = filePath.lastIndexOf('/')
+  if (i <= 0) {
+    return null
+  }
+  return filePath.slice(0, i)
 }

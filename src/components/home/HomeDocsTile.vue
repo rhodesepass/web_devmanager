@@ -32,7 +32,9 @@
       打开白银的文件存储
     </v-btn>
 
-    <v-spacer />
+    <p class="text-body-2 text-medium-emphasis mb-4">
+      电子通行证是开源社区的大家手搓的爱好者产品，不可避免地存在大量bug和不完善的地方。烦请您多一些耐心和谅解~
+    </p>
 
     
   </div>
