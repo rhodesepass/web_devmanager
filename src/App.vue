@@ -36,11 +36,23 @@
 
       <template #append>
         <div class="d-flex justify-center pb-4">
-          <v-icon
-            :color="connected ? 'success' : 'medium-emphasis'"
-            :icon="connected ? 'mdi-circle' : 'mdi-circle-outline'"
-            size="10"
-          />
+          <v-tooltip
+            :text="connectionTooltip"
+            location="end"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                :color="connected ? 'success' : 'primary'"
+                :disabled="transferLocked || !isSupported"
+                :icon="connected ? 'mdi-link-off' : 'mdi-usb-port'"
+                :loading="connecting"
+                size="small"
+                variant="tonal"
+                @click="onToggleConnection"
+              />
+            </template>
+          </v-tooltip>
         </div>
       </template>
     </v-navigation-drawer>
@@ -75,6 +87,7 @@
 </template>
 
 <script lang="ts" setup>
+import { computed, ref } from 'vue'
 import PlatformNoticeDialog from '@/components/PlatformNoticeDialog.vue'
 import TransferLockOverlay from '@/components/TransferLockOverlay.vue'
 import { useEmbedMode } from '@/composables/useEmbedMode'
@@ -85,7 +98,7 @@ import { useUsb } from '@/composables/useUsb'
 import logo from '@/assets/logo.svg'
 
 const { notifications } = useNotifications()
-const { connected } = useUsb()
+const { connected, isSupported, connect, disconnect } = useUsb()
 const { isEmbed } = useEmbedMode()
 const { active: transferLocked } = useTransferLock()
 const {
@@ -93,6 +106,34 @@ const {
   kind: platformNoticeKind,
   dismiss: dismissPlatformNotice,
 } = usePlatformNotice(isEmbed.value)
+
+const connecting = ref(false)
+
+const connectionTooltip = computed(() => {
+  if (!isSupported.value) {
+    return '当前浏览器不支持 WebUSB'
+  }
+  if (transferLocked.value) {
+    return '传输进行中，请稍候'
+  }
+  return connected.value ? '断开连接' : '连接设备'
+})
+
+async function onToggleConnection () {
+  if (transferLocked.value || !isSupported.value) {
+    return
+  }
+  if (connected.value) {
+    await disconnect()
+    return
+  }
+  connecting.value = true
+  try {
+    await connect()
+  } finally {
+    connecting.value = false
+  }
+}
 
 const navItems = [
   { path: '/', icon: 'mdi-usb', title: '连接' },

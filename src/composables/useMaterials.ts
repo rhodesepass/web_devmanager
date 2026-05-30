@@ -14,6 +14,11 @@ import {
   triggerBlobDownload,
 } from '@/utils/zipMaterial'
 import { formatBytes } from '@/utils/format'
+import {
+  getCachedMaterialIcon,
+  removeCachedMaterialIcon,
+  setCachedMaterialIcon,
+} from '@/utils/materialIconCache'
 import { useNotifications } from './useNotifications'
 import { useTransferLock } from './useTransferLock'
 
@@ -69,10 +74,17 @@ async function materialExistsOnStorage (
   }
 }
 
+export interface UseMaterialsOptions {
+  /** 连接设备后是否自动拉取设备素材列表，默认 true */
+  autoRefresh?: boolean
+}
+
 export function useMaterials (
   client: Ref<UsbResponderClient | null>,
   sdMounted: Ref<boolean>,
+  options: UseMaterialsOptions = {},
 ) {
+  const autoRefresh = options.autoRefresh !== false
   const { notify } = useNotifications()
   const transferLock = useTransferLock()
   const materials = ref<RemoteMaterial[]>([])
@@ -145,7 +157,20 @@ export function useMaterials (
           }
         }
 
-        const info = toMaterialInfo(parsed, files.length, totalBytes, null)
+        let iconBytes: number | null = null
+        if (parsed.iconRelativePath) {
+          try {
+            const stat = await client.value.fileStat(`${basePath}/${parsed.iconRelativePath}`)
+            const size = Number.parseInt(stat.size ?? '0', 10)
+            if (size > 0) {
+              iconBytes = size
+            }
+          } catch {
+            // icon stat failure is non-fatal
+          }
+        }
+
+        const info = toMaterialInfo(parsed, files.length, totalBytes, null, iconBytes)
         result.push({
           info,
           storage,
@@ -156,6 +181,28 @@ export function useMaterials (
       }
     }
     return result
+  }
+
+  function applyMaterialIcon (
+    listKey: string,
+    iconUrl: string,
+    generation: number,
+  ): boolean {
+    const idx = materials.value.findIndex(m => m.listKey === listKey)
+    if (idx < 0 || generation !== iconLoadGeneration) {
+      URL.revokeObjectURL(iconUrl)
+      return false
+    }
+
+    const current = materials.value[idx]
+    if (current.info.iconUrl) {
+      URL.revokeObjectURL(current.info.iconUrl)
+    }
+    materials.value[idx] = {
+      ...current,
+      info: { ...current.info, iconUrl },
+    }
+    return true
   }
 
   async function loadIconsInBackground (generation: number) {
@@ -173,30 +220,36 @@ export function useMaterials (
         continue
       }
 
+      const iconBytes = item.info.iconBytes
+      if (iconBytes != null && iconBytes > 0) {
+        const cached = getCachedMaterialIcon(item.info.uuid, iconBytes)
+        if (cached) {
+          const iconCopy = new Uint8Array(cached.bytes)
+          const iconUrl = URL.createObjectURL(new Blob([iconCopy], { type: cached.mime }))
+          if (applyMaterialIcon(item.listKey, iconUrl, generation)) {
+            continue
+          }
+          return
+        }
+      }
+
       const basePath = materialDirPath(item.storage, item.info.uuid)
       try {
-        const iconBytes = await c.fileGet(`${basePath}/${iconPath}`)
+        const fetchedBytes = await c.fileGet(`${basePath}/${iconPath}`)
         if (generation !== iconLoadGeneration) {
           return
         }
 
         const mime = guessImageMime(iconPath)
-        const iconCopy = new Uint8Array(iconBytes)
+        const iconCopy = new Uint8Array(fetchedBytes)
         const iconUrl = URL.createObjectURL(new Blob([iconCopy], { type: mime }))
 
-        const idx = materials.value.findIndex(m => m.listKey === item.listKey)
-        if (idx < 0 || generation !== iconLoadGeneration) {
-          URL.revokeObjectURL(iconUrl)
+        if (!applyMaterialIcon(item.listKey, iconUrl, generation)) {
           return
         }
 
-        const current = materials.value[idx]
-        if (current.info.iconUrl) {
-          URL.revokeObjectURL(current.info.iconUrl)
-        }
-        materials.value[idx] = {
-          ...current,
-          info: { ...current.info, iconUrl },
+        if (iconBytes != null && iconBytes > 0) {
+          setCachedMaterialIcon(item.info.uuid, iconBytes, mime, iconCopy)
         }
       } catch {
         // icon download failure is non-fatal
@@ -373,6 +426,7 @@ export function useMaterials (
     const path = materialDirPath(material.storage, material.info.uuid)
     try {
       await client.value.fileDelete(path)
+      removeCachedMaterialIcon(material.info.uuid)
       await reloadAssetsOnDevice()
       notify(`已删除素材: ${material.info.name}`, 'success')
       await refresh()
@@ -382,20 +436,22 @@ export function useMaterials (
     }
   }
 
-  watch(client, c => {
-    if (c) {
-      refresh()
-    } else {
-      revokeIconUrls(materials.value)
-      materials.value = []
-    }
-  }, { immediate: true })
+  if (autoRefresh) {
+    watch(client, c => {
+      if (c) {
+        refresh()
+      } else {
+        revokeIconUrls(materials.value)
+        materials.value = []
+      }
+    }, { immediate: true })
 
-  watch(sdMounted, () => {
-    if (client.value) {
-      refresh()
-    }
-  })
+    watch(sdMounted, () => {
+      if (client.value) {
+        refresh()
+      }
+    })
+  }
 
   return {
     materials,

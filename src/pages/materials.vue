@@ -29,6 +29,24 @@
         >
           上传 zip
         </v-btn>
+
+        <v-tooltip
+          location="bottom"
+          max-width="280"
+          text="为加快图标加载，素材图标会缓存在浏览器本地。若图标显示异常，可点此清除缓存并重新加载。"
+        >
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              :disabled="transferring"
+              prepend-icon="mdi-image-remove-outline"
+              variant="tonal"
+              @click="onClearIconCache"
+            >
+              清除图标缓存
+            </v-btn>
+          </template>
+        </v-tooltip>
       </template>
 
       <v-btn
@@ -137,9 +155,12 @@
   import MaterialList from '@/components/MaterialList.vue'
   import PageHeader from '@/components/PageHeader.vue'
   import { useMaterials } from '@/composables/useMaterials'
+  import { useNotifications } from '@/composables/useNotifications'
   import { useUsb } from '@/composables/useUsb'
   import { formatBytes } from '@/utils/format'
+  import { clearAllMaterialIconCache } from '@/utils/materialIconCache'
 
+  const { notify } = useNotifications()
   const { connected, client, devInfo } = useUsb()
 
   const sdMounted = computed(() => devInfo.value?.sd_mounted === '1')
@@ -222,5 +243,11 @@
     if (!m) return
     pendingDelete.value = null
     await deleteMaterial(m)
+  }
+
+  async function onClearIconCache () {
+    clearAllMaterialIconCache()
+    notify('已清除图标缓存，正在重新加载…', 'info')
+    await refresh()
   }
 </script>

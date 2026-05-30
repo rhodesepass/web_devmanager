@@ -1,7 +1,7 @@
 import type { FlashEvent } from '@/flash'
 import type { FlashManifest, ManifestEntry } from '@/types/flashManifest'
 import { computed, ref, watch } from 'vue'
-import { probeDfu, probeFel, runFlashDfuStage, runFlashFelStage } from '@/flash'
+import { runFlashDfuStage, runFlashFelStage } from '@/flash'
 import { isWebUsbSupported } from '@/utils/browser'
 import {
   downloadManifestFile,
@@ -291,40 +291,6 @@ export function useFlash () {
     }
   }
 
-  function probeFelDevice (): Promise<void> {
-    if (!isSupported.value) {
-      notify('当前浏览器不支持 WebUSB', 'error')
-      return Promise.resolve()
-    }
-    error.value = null
-    logs.value = []
-    appendLog('开始 FEL 探测...')
-
-    return probeFel(handleEvent)
-      .then(() => notify('FEL 探测成功', 'success'))
-      .catch((error_: unknown) => {
-        const msg = error_ instanceof Error ? error_.message : String(error_)
-        reportFailure(msg)
-      })
-  }
-
-  function probeDfuDevice (): Promise<void> {
-    if (!isSupported.value) {
-      notify('当前浏览器不支持 WebUSB', 'error')
-      return Promise.resolve()
-    }
-    error.value = null
-    logs.value = []
-    appendLog('开始 DFU 探测...')
-
-    return probeDfu(handleEvent)
-      .then(() => notify('DFU 探测成功', 'success'))
-      .catch((error_: unknown) => {
-        const msg = error_ instanceof Error ? error_.message : String(error_)
-        reportFailure(msg)
-      })
-  }
-
   async function prepareFiles (): Promise<boolean> {
     if (fileSource.value === 'manifest') {
       if (ubootBytes.value && bootBytes.value && rootfsBytes.value) {
@@ -501,8 +467,6 @@ export function useFlash () {
     filesReady,
     imagesLoaded,
     canStartFlash,
-    probeFelDevice,
-    probeDfuDevice,
     prepareFiles,
     startFelStage,
     continueDfuStage,

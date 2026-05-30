@@ -117,7 +117,39 @@
     </v-card>
     </div>
 
-    <div class="material-share-body">
+    <div v-if="isEmbed" class="material-share-grid">
+      <div v-if="loading && allAssets.length === 0" class="d-flex justify-center py-12">
+        <v-progress-circular color="primary" indeterminate />
+      </div>
+
+      <v-row v-else-if="filteredAssets.length > 0">
+        <v-col
+          v-for="asset in filteredAssets"
+          :key="asset.uuid"
+          cols="6"
+          lg="2"
+          md="3"
+          sm="4"
+        >
+          <SharedMaterialCard
+            :asset="asset"
+            :disabled="busy"
+            :downloading="downloadingAssetUuid === asset.uuid"
+            @download="onDownloadClick"
+          />
+        </v-col>
+      </v-row>
+
+      <v-alert
+        v-else-if="!loading"
+        type="info"
+        variant="tonal"
+      >
+        {{ searchQuery.trim() ? '没有匹配的素材' : '素材清单为空' }}
+      </v-alert>
+    </div>
+
+    <div v-else class="material-share-body">
       <div v-if="loading && allAssets.length === 0" class="d-flex justify-center py-12">
         <v-progress-circular color="primary" indeterminate />
       </div>
@@ -268,7 +300,7 @@
     transferProgress,
     storageOptions,
     uploadZip,
-  } = useMaterials(toRef(client), sdMounted)
+  } = useMaterials(toRef(client), sdMounted, { autoRefresh: false })
 
   const allAssets = ref<SharedMaterialAsset[]>([])
   const searchQuery = ref('')
@@ -456,14 +488,13 @@
 </script>
 
 <style scoped>
-.material-share {
+.material-share:not(.material-share--embed) {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 48px);
 }
 
 .material-share--embed {
-  height: 100vh;
   min-height: 100vh;
 }
 

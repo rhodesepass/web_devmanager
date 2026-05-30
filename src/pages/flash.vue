@@ -201,23 +201,6 @@
                 </v-card-text>
 
                 <v-card-actions>
-                  <v-btn
-                    :disabled="!isSupported"
-                    size="small"
-                    variant="text"
-                    @click="probeFelDevice"
-                  >
-                    探测 FEL
-                  </v-btn>
-
-                  <v-btn
-                    :disabled="!isSupported"
-                    size="small"
-                    variant="text"
-                    @click="probeDfuDevice"
-                  >
-                    探测 DFU
-                  </v-btn>
 
                   <v-spacer />
 
@@ -487,8 +470,6 @@
     filesReady,
     imagesLoaded,
     canStartFlash,
-    probeFelDevice,
-    probeDfuDevice,
     prepareFiles,
     startFelStage,
     continueDfuStage,

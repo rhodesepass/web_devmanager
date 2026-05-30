@@ -42,6 +42,7 @@ export function toMaterialInfo (
   fileCount: number,
   totalBytes: number,
   iconUrl: string | null,
+  iconBytes: number | null = null,
 ): MaterialInfo {
   return {
     uuid: parsed.uuid,
@@ -49,6 +50,7 @@ export function toMaterialInfo (
     description: parsed.description,
     screen: parsed.screen,
     iconRelativePath: parsed.iconRelativePath,
+    iconBytes,
     fileCount,
     totalBytes,
     iconUrl,

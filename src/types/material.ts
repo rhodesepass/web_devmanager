@@ -6,6 +6,7 @@ export interface MaterialInfo {
   description: string
   screen: string
   iconRelativePath: string | null
+  iconBytes: number | null
   fileCount: number
   totalBytes: number
   iconUrl: string | null
