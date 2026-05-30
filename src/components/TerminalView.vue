@@ -14,39 +14,42 @@
     </div>
 
     <div class="terminal-output flex-grow-1 mb-2">
-      <TerminalOutput :lines="lines" />
+      <TerminalOutput :lines="lines" :ready="!!client" />
     </div>
 
     <div class="terminal-input flex-shrink-0 d-flex align-center ga-2">
       <v-icon class="text-medium-emphasis" icon="mdi-chevron-right" size="small" />
       <v-text-field
+        ref="inputRef"
         v-model="commandInput"
         autocomplete="off"
+        :autofocus="!!client"
         class="flex-grow-1"
         density="compact"
         hide-details
-        placeholder="例如 uname -a"
+        :placeholder="client ? '例如 uname -a' : '请先连接设备'"
         single-line
         variant="solo-filled"
         flat
-        :disabled="executing"
+        :disabled="!client"
         :loading="executing"
-        @keydown.enter="execute()"
+        @keydown.enter.prevent="runCommand()"
         @keydown="onKeydown"
       />
       <v-btn
         icon="mdi-send"
         size="small"
         variant="tonal"
-        :disabled="executing || !commandInput.trim()"
-        @click="execute()"
+        :disabled="!client || executing || !commandInput.trim()"
+        @click="runCommand()"
       />
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { toRef } from 'vue'
+import { nextTick, ref, toRef } from 'vue'
+import type { VTextField } from 'vuetify/components'
 import type { UsbResponderClient } from '@/usb'
 import { useTerminal } from '@/composables/useTerminal'
 import TerminalOutput from './TerminalOutput.vue'
@@ -56,6 +59,14 @@ const props = defineProps<{ client: UsbResponderClient | null }>()
 const { commandInput, lines, executing, execute, onKeydown, clear } = useTerminal(
   toRef(props, 'client'),
 )
+
+const inputRef = ref<VTextField | null>(null)
+
+async function runCommand () {
+  await execute()
+  await nextTick()
+  inputRef.value?.focus()
+}
 </script>
 
 <style scoped>

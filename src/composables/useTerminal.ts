@@ -19,6 +19,7 @@ export function useTerminal (client: Ref<UsbResponderClient | null>) {
   const historyIndex = ref(-1)
 
   async function execute (cmd?: string) {
+    if (executing.value) return
     const command = cmd ?? commandInput.value.trim()
     if (!command || !client.value) return
     commandInput.value = ''
