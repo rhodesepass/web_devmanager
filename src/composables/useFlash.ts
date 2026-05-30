@@ -26,6 +26,12 @@ export function useFlash () {
     transferLock.update(detail, done, total)
   }
 
+  function enableLockOverlay () {
+    if (stage.value === 'fel-running' || stage.value === 'dfu-running') {
+      transferLock.setOverlay(true)
+    }
+  }
+
   const stage = ref<Stage>('idle')
   const status = ref('')
   const error = ref<string | null>(null)
@@ -127,6 +133,7 @@ export function useFlash () {
       case 'step': {
         appendLog(event.title, true)
         syncLockProgress(event.title, 0, 0)
+        enableLockOverlay()
         break
       }
       case 'log': {
@@ -148,6 +155,7 @@ export function useFlash () {
           event.done,
           event.total,
         )
+        enableLockOverlay()
         break
       }
       case 'done': {
@@ -362,7 +370,7 @@ export function useFlash () {
     progressDone.value = 0
     progressTotal.value = 0
     stage.value = 'fel-running'
-    transferLock.begin('烧录中', 'FEL 阶段')
+    transferLock.begin('烧录中', 'FEL 阶段', { overlay: false })
     const ubootSnapshot = ubootBytes.value
 
     return runFlashFelStage(
@@ -373,6 +381,7 @@ export function useFlash () {
       .then(() => {
         stage.value = 'awaiting-dfu'
         appendLog('FEL 阶段完成，等待 DFU 设备授权...', true)
+        transferLock.setOverlay(false)
         syncLockProgress('等待 DFU 设备授权…', 0, 0)
       })
       .catch((error_: unknown) => {

@@ -5,12 +5,22 @@ export interface TransferLockSnapshot {
   detail: string | null
   bytes: number
   total: number
+  /** 为 false 时仅禁止侧栏/路由切换，不显示全屏遮罩（如等待 WebUSB 授权） */
+  overlay: boolean
+}
+
+export interface TransferLockBeginOptions {
+  overlay?: boolean
 }
 
 const lock = ref<TransferLockSnapshot | null>(null)
 
 export function useTransferLock () {
   const active = computed(() => lock.value != null)
+
+  const showOverlay = computed(
+    () => lock.value != null && lock.value.overlay,
+  )
 
   const percent = computed(() => {
     const s = lock.value
@@ -20,8 +30,25 @@ export function useTransferLock () {
     return Math.min(100, Math.round((s.bytes / s.total) * 100))
   })
 
-  function begin (title: string, detail: string | null = null) {
-    lock.value = { title, detail, bytes: 0, total: 0 }
+  function begin (
+    title: string,
+    detail: string | null = null,
+    options: TransferLockBeginOptions = {},
+  ) {
+    lock.value = {
+      title,
+      detail,
+      bytes: 0,
+      total: 0,
+      overlay: options.overlay ?? true,
+    }
+  }
+
+  function setOverlay (overlay: boolean) {
+    if (!lock.value) {
+      return
+    }
+    lock.value.overlay = overlay
   }
 
   function update (
@@ -47,5 +74,5 @@ export function useTransferLock () {
     lock.value = null
   }
 
-  return { lock, active, percent, begin, update, end }
+  return { lock, active, showOverlay, percent, begin, setOverlay, update, end }
 }

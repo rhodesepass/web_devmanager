@@ -1,4 +1,4 @@
-import { encodeFrame, decodeFrame, HEADER_SIZE, MAX_PAYLOAD, MsgType } from '@/protocol'
+import { encodeFrame, decodeFrame, HEADER_SIZE, MAX_PAYLOAD, MsgType, logUsbProtocolFrame } from '@/protocol'
 import { USB_REQUEST_CHUNK, DEFAULT_TIMEOUT } from './constants'
 import type { Frame } from '@/protocol'
 
@@ -83,6 +83,7 @@ export class UsbTransport {
 
   async sendFrame (type: MsgType, payload: Uint8Array<ArrayBufferLike> = new Uint8Array(0), reqId?: number): Promise<number> {
     const id = reqId ?? this.nextId()
+    logUsbProtocolFrame('TX', { type, requestId: id, flags: 0, payload })
     const frame = encodeFrame(type, id, payload)
     await this.writeAll(frame)
     return id
@@ -111,7 +112,9 @@ export class UsbTransport {
       this.rxBuffer.copyWithin(0, frameLen, frameLen + this.rxLength)
     }
 
-    return decodeFrame(frameBuf)
+    const frame = decodeFrame(frameBuf)
+    logUsbProtocolFrame('RX', frame)
+    return frame
   }
 
   private async writeAll (data: Uint8Array): Promise<void> {

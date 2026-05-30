@@ -1,6 +1,6 @@
 <template>
   <v-dialog
-    :model-value="active"
+    :model-value="showOverlay"
     persistent
     no-click-animation
     :scrim="true"
@@ -53,7 +53,7 @@
   import { useTransferLock } from '@/composables/useTransferLock'
   import { formatBytes } from '@/utils/format'
 
-  const { lock, active, percent } = useTransferLock()
+  const { lock, showOverlay, percent } = useTransferLock()
 
   const snapshot = computed(() => lock.value)
 </script>
