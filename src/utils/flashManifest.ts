@@ -4,8 +4,7 @@ import type {
   ManifestFile,
   MirrorEntry,
 } from '@/types/flashManifest'
-
-const DEFAULT_FLASH_BASE_URL = 'https://epflash.iccmc.cc/'
+import { siteLinks } from '@/config/site'
 
 interface RawManifestFile {
   type?: string
@@ -38,7 +37,7 @@ function normalizeBaseUrl (url: string): string {
 }
 
 export function buildFlashManifestUrl (rev: string, screen: string): string {
-  const base = normalizeBaseUrl(DEFAULT_FLASH_BASE_URL)
+  const base = normalizeBaseUrl(siteLinks.flashBase)
   return new URL(`${rev}/${screen}/manifest.json`, base).href
 }
 

@@ -22,7 +22,7 @@
       color="secondary"
       variant="tonal"
       prepend-icon="mdi-file-edit"
-      href="https://openlist.slstudio.top/%E7%99%BD%E9%93%B6%E7%9A%84%E9%80%9A%E8%A1%8C%E8%AF%81/ArknightsPassMaker_v2.2.0_Setup.exe"
+      :href="siteLinks.materialEditorSetup"
       target="_blank"
       rel="noopener noreferrer"
       class="align-self-start"
@@ -38,3 +38,7 @@
     </div>
   </div>
 </template>
+
+<script lang="ts" setup>
+  import { siteLinks } from '@/config/site'
+</script>

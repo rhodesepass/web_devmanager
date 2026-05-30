@@ -6,7 +6,6 @@
     />
 
     <BrowserWarning v-if="!isSupported" class="mb-4" />
-    <LinuxUdevHint v-else-if="showLinuxUdevHint" />
 
     <v-row>
       <v-col cols="12" lg="7">
@@ -109,7 +108,7 @@
                         刷新清单
                       </v-btn>
                       <span class="text-caption text-medium-emphasis">
-                        epflash.iccmc.cc
+                        {{ flashBaseHost }}
                       </span>
                     </div>
 
@@ -454,12 +453,11 @@
 <script lang="ts" setup>
   import { ref, watch } from 'vue'
   import BrowserWarning from '@/components/BrowserWarning.vue'
-  import LinuxUdevHint from '@/components/LinuxUdevHint.vue'
   import PageHeader from '@/components/PageHeader.vue'
   import { useFlash } from '@/composables/useFlash'
-  import { isLinux } from '@/utils/browser'
+  import { siteLinks } from '@/config/site'
 
-  const showLinuxUdevHint = isLinux()
+  const flashBaseHost = new URL(siteLinks.flashBase).host
 
   const revisions = ['0.2', '0.3', '0.5', '0.6']
   const screens = ['boe', 'hsd', 'laowu']

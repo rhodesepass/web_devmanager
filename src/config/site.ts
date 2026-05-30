@@ -9,4 +9,14 @@ export const siteLinks = {
   qqQrImage2: '/qq-group-qr2.png',
   /** 白银的文件存储 */
   oplst: 'https://oplst.iccmc.cc/',
+  /** 固件清单基址（manifest.json 等） */
+  flashBase: 'https://epflash.iccmc.cc/',
+  /** 在线分享素材静态资源基址（manifest、previews 等） */
+  sharedMaterialsBase: '/asset2share/',
+  /** Windows 刷机工具（exe） */
+  windowsFlasherExe: 'https://openlist.slstudio.top/%E7%99%BD%E9%93%B6%E7%9A%84%E9%80%9A%E8%A1%8C%E8%AF%81/%E5%88%B7%E6%9C%BA%E7%A8%8B%E5%BA%8Fepass_flasherV2.exe',
+  /** Android 管理器（apk） */
+  androidManagerApk: 'https://openlist.slstudio.top/%E7%99%BD%E9%93%B6%E7%9A%84%E9%80%9A%E8%A1%8C%E8%AF%81/ePass%E7%AE%A1%E7%90%86%E5%99%A8%20v1.2.apk',
+  /** 素材编辑器（Windows 安装包） */
+  materialEditorSetup: 'https://openlist.slstudio.top/%E7%99%BD%E9%93%B6%E7%9A%84%E9%80%9A%E8%A1%8C%E8%AF%81/ArknightsPassMaker_v2.2.0_Setup.exe',
 } as const

@@ -9,12 +9,22 @@ import {
   getEntryFile,
 } from '@/utils/flashManifest'
 import { useNotifications } from './useNotifications'
+import { useTransferLock } from './useTransferLock'
 
 type Stage = 'idle' | 'fel-running' | 'awaiting-dfu' | 'dfu-running' | 'done' | 'failed'
 export type FlashFileSource = 'manifest' | 'manual'
 
 export function useFlash () {
   const { notify } = useNotifications()
+  const transferLock = useTransferLock()
+
+  function syncLockProgress (
+    detail?: string | null,
+    done?: number,
+    total?: number,
+  ) {
+    transferLock.update(detail, done, total)
+  }
 
   const stage = ref<Stage>('idle')
   const status = ref('')
@@ -116,6 +126,7 @@ export function useFlash () {
     switch (event.type) {
       case 'step': {
         appendLog(event.title, true)
+        syncLockProgress(event.title, 0, 0)
         break
       }
       case 'log': {
@@ -123,13 +134,20 @@ export function useFlash () {
         break
       }
       case 'waiting': {
-        appendLog(`等待设备: ${event.mode}`, true)
+        const detail = `等待设备: ${event.mode}`
+        appendLog(detail, true)
+        syncLockProgress(detail, 0, 0)
         break
       }
       case 'progress': {
         status.value = `${progressLabel.value ?? '进度'} ${event.done}/${event.total}`
         progressDone.value = event.done
         progressTotal.value = event.total
+        syncLockProgress(
+          progressLabel.value ?? status.value,
+          event.done,
+          event.total,
+        )
         break
       }
       case 'done': {
@@ -139,6 +157,7 @@ export function useFlash () {
         progressLabel.value = '完成'
         progressDone.value = 1
         progressTotal.value = 1
+        transferLock.end()
         notify('烧录完成', 'success')
         break
       }
@@ -147,6 +166,7 @@ export function useFlash () {
         error.value = event.reason
         stage.value = 'failed'
         status.value = '失败'
+        transferLock.end()
         notify(event.reason, 'error')
         break
       }
@@ -158,6 +178,7 @@ export function useFlash () {
     appendLog(`失败: ${msg}`)
     stage.value = 'failed'
     status.value = '失败'
+    transferLock.end()
     notify(msg, 'error')
   }
 
@@ -215,6 +236,7 @@ export function useFlash () {
     downloadingFirmware.value = true
     error.value = null
     clearLoadedBytes()
+    transferLock.begin('下载固件')
 
     const tasks: Array<{ label: string, meta: typeof ubootMeta }> = [
       { label: 'U-Boot', meta: ubootMeta },
@@ -232,9 +254,11 @@ export function useFlash () {
           (loaded, total) => {
             progressDone.value = loaded
             progressTotal.value = total ?? 0
+            const detail = `${task.label}: ${task.meta.name}`
             if (total) {
               status.value = `下载 ${task.label} ${Math.round(loaded / total * 100)}%`
             }
+            syncLockProgress(detail, loaded, total ?? 0)
           },
         )
         if (task.meta.type === 'uboot') {
@@ -253,6 +277,9 @@ export function useFlash () {
       return false
     } finally {
       downloadingFirmware.value = false
+      if (stage.value === 'idle' || stage.value === 'failed') {
+        transferLock.end()
+      }
     }
   }
 
@@ -301,15 +328,23 @@ export function useFlash () {
     if (!ubootFile.value || !bootFile.value || !rootfsFile.value) {
       return false
     }
+    transferLock.begin('读取镜像')
     try {
+      syncLockProgress(ubootFile.value.name)
       ubootBytes.value = await readFile(ubootFile.value)
+      syncLockProgress(bootFile.value.name)
       bootBytes.value = await readFile(bootFile.value)
+      syncLockProgress(rootfsFile.value.name)
       rootfsBytes.value = await readFile(rootfsFile.value)
       return true
     } catch (error_: unknown) {
       const msg = error_ instanceof Error ? error_.message : String(error_)
       reportFailure(`读取镜像失败：${msg}`)
       return false
+    } finally {
+      if (stage.value === 'idle' || stage.value === 'failed') {
+        transferLock.end()
+      }
     }
   }
 
@@ -327,6 +362,7 @@ export function useFlash () {
     progressDone.value = 0
     progressTotal.value = 0
     stage.value = 'fel-running'
+    transferLock.begin('烧录中', 'FEL 阶段')
     const ubootSnapshot = ubootBytes.value
 
     return runFlashFelStage(
@@ -337,6 +373,7 @@ export function useFlash () {
       .then(() => {
         stage.value = 'awaiting-dfu'
         appendLog('FEL 阶段完成，等待 DFU 设备授权...', true)
+        syncLockProgress('等待 DFU 设备授权…', 0, 0)
       })
       .catch((error_: unknown) => {
         const msg = error_ instanceof Error ? error_.message : String(error_)
@@ -355,6 +392,7 @@ export function useFlash () {
     error.value = null
     appendLog('开始 DFU 阶段...', true)
     stage.value = 'dfu-running'
+    syncLockProgress('DFU 阶段', 0, 0)
     const bootSnapshot = bootBytes.value
     const rootfsSnapshot = rootfsBytes.value
 
@@ -376,6 +414,7 @@ export function useFlash () {
     progressLabel.value = null
     progressDone.value = 0
     progressTotal.value = 0
+    transferLock.end()
   }
 
   function setFile (type: 'uboot' | 'boot' | 'rootfs', file: File | null) {

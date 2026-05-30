@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useTransferLock } from '@/composables/useTransferLock'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -29,6 +30,13 @@ const router = createRouter({
       component: () => import('@/pages/flash.vue'),
     },
   ],
+})
+
+router.beforeEach((to, from) => {
+  const { active } = useTransferLock()
+  if (active.value && to.path !== from.path) {
+    return false
+  }
 })
 
 export default router

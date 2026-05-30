@@ -14,6 +14,7 @@ import {
   triggerBlobDownload,
 } from '@/utils/zipMaterial'
 import { useNotifications } from './useNotifications'
+import { useTransferLock } from './useTransferLock'
 
 function materialDirPath (storage: MaterialStorage, uuid: string): string {
   return `${MATERIAL_STORAGES[storage].assetsBasePath}/${uuid}`
@@ -37,6 +38,7 @@ export function useMaterials (
   sdMounted: Ref<boolean>,
 ) {
   const { notify } = useNotifications()
+  const transferLock = useTransferLock()
   const materials = ref<RemoteMaterial[]>([])
   const loading = ref(false)
   const transferring = ref(false)
@@ -159,6 +161,7 @@ export function useMaterials (
     }
     transferring.value = true
     transferProgress.value = { fileName: '解压 zip…', bytes: 0, total: 1, isUpload: true }
+    transferLock.begin('上传素材', '解压 zip…')
 
     try {
       const extracted = await extractMaterialFromZip(file)
@@ -172,12 +175,14 @@ export function useMaterials (
         const remotePath = `${dirPath}/${item.name}`
         const uploadFile = bytesToFile(item.data, item.name)
         await client.value.filePut(uploadFile, remotePath, (current, _total) => {
+          const bytes = sent + current
           transferProgress.value = {
             fileName: item.name,
-            bytes: sent + current,
+            bytes,
             total: totalBytes,
             isUpload: true,
           }
+          transferLock.update(item.name, bytes, totalBytes)
         })
         sent += item.data.byteLength
       }
@@ -192,6 +197,7 @@ export function useMaterials (
     } finally {
       transferring.value = false
       transferProgress.value = null
+      transferLock.end()
     }
   }
 
@@ -201,6 +207,7 @@ export function useMaterials (
     }
     const basePath = materialDirPath(material.storage, material.info.uuid)
     transferring.value = true
+    transferLock.begin('下载素材')
 
     try {
       const { files } = await client.value.fileList(basePath)
@@ -228,6 +235,7 @@ export function useMaterials (
           total: totalBytes,
           isUpload: false,
         }
+        transferLock.update(name, received, totalBytes)
         const data = await client.value.fileGet(`${basePath}/${name}`)
         zipFiles.push({ name, data })
         received += sizes[name] ?? data.byteLength
@@ -237,6 +245,7 @@ export function useMaterials (
           total: totalBytes,
           isUpload: false,
         }
+        transferLock.update(name, received, totalBytes)
       }
 
       transferProgress.value = {
@@ -245,6 +254,7 @@ export function useMaterials (
         total: totalBytes,
         isUpload: false,
       }
+      transferLock.update('打包 zip…', totalBytes, totalBytes)
 
       const zipBlob = await buildMaterialZip(zipFiles)
       const filename = `${sanitizeZipFilename(material.info.name)}.zip`
@@ -257,6 +267,7 @@ export function useMaterials (
     } finally {
       transferring.value = false
       transferProgress.value = null
+      transferLock.end()
     }
   }
 

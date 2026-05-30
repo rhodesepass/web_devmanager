@@ -32,6 +32,7 @@
       </template>
 
       <v-btn
+        :disabled="transferring"
         prepend-icon="mdi-earth"
         to="/materials/share"
         variant="tonal"

@@ -30,14 +30,16 @@
 
       <v-btn
         v-if="!isEmbed"
+        :disabled="busy"
         prepend-icon="mdi-arrow-left"
-        to="/materials"
+        :to="busy ? undefined : '/materials'"
         variant="text"
       >
         设备素材
       </v-btn>
 
       <v-btn
+        :disabled="busy"
         :loading="loading"
         prepend-icon="mdi-refresh"
         variant="tonal"
@@ -214,6 +216,7 @@
   import SharedMaterialCard from '@/components/SharedMaterialCard.vue'
   import { useMaterials } from '@/composables/useMaterials'
   import { useNotifications } from '@/composables/useNotifications'
+  import { useTransferLock } from '@/composables/useTransferLock'
   import { useUsb } from '@/composables/useUsb'
   import { formatBytes } from '@/utils/format'
   import {
@@ -227,6 +230,7 @@
   const router = useRouter()
   const { isEmbed } = useEmbedMode()
   const { notify } = useNotifications()
+  const transferLock = useTransferLock()
   const { connected, client, devInfo } = useUsb()
 
   const sdMounted = computed(() => devInfo.value?.sd_mounted === '1')
@@ -340,9 +344,11 @@
     downloading.value = true
     downloadingAssetUuid.value = asset.uuid
     downloadProgress.value = { name: asset.name, loaded: 0, total: null }
+    transferLock.begin('下载素材', asset.name)
     try {
       await triggerSharedMaterialLocalDownload(asset, (loaded, total) => {
         downloadProgress.value = { name: asset.name, loaded, total }
+        transferLock.update(asset.name, loaded, total ?? 0)
       })
       notify(`已下载: ${asset.zip ?? asset.name}`, 'success')
     } catch (error: unknown) {
@@ -352,6 +358,7 @@
       downloading.value = false
       downloadingAssetUuid.value = null
       downloadProgress.value = null
+      transferLock.end()
     }
   }
 
@@ -364,14 +371,17 @@
     downloading.value = true
     downloadingAssetUuid.value = asset.uuid
     downloadProgress.value = { name: asset.name, loaded: 0, total: null }
+    transferLock.begin('下载素材', asset.name)
 
     try {
       const file = await downloadSharedMaterialZipFile(asset, (loaded, total) => {
         downloadProgress.value = { name: asset.name, loaded, total }
+        transferLock.update(asset.name, loaded, total ?? 0)
       })
       downloading.value = false
       downloadingAssetUuid.value = null
       downloadProgress.value = null
+      transferLock.end()
 
       await uploadZip(file, uploadStorage.value)
     } catch (error: unknown) {
@@ -381,6 +391,7 @@
       downloading.value = false
       downloadingAssetUuid.value = null
       downloadProgress.value = null
+      transferLock.end()
     }
   }
 

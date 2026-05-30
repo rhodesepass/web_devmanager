@@ -1,8 +1,6 @@
 import type { SharedMaterialAsset } from '@/types/material'
+import { siteLinks } from '@/config/site'
 import { triggerBlobDownload } from '@/utils/zipMaterial'
-
-/** 分享素材静态资源基址（manifest、previews 等） */
-const SHARED_MATERIALS_BASE_URL = '/asset2share/'
 
 function normalizeBaseUrl (url: string): string {
   return url.endsWith('/') ? url : `${url}/`
@@ -35,12 +33,12 @@ export function resolveSharedMaterialUrl (
   if (isAbsoluteUrl(path)) {
     return path
   }
-  const base = toAbsoluteBaseUrl(baseUrl ?? SHARED_MATERIALS_BASE_URL)
+  const base = toAbsoluteBaseUrl(baseUrl ?? siteLinks.sharedMaterialsBase)
   return new URL(path.replace(/^\//, ''), base).href
 }
 
 export async function fetchSharedMaterialManifest (): Promise<SharedMaterialAsset[]> {
-  const base = toAbsoluteBaseUrl(SHARED_MATERIALS_BASE_URL)
+  const base = toAbsoluteBaseUrl(siteLinks.sharedMaterialsBase)
   const url = new URL('manifest.json', base).href
   const res = await fetch(url)
   if (!res.ok) {

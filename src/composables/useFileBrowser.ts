@@ -1,6 +1,7 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import type { UsbResponderClient } from '@/usb'
 import { useNotifications } from './useNotifications'
+import { useTransferLock } from './useTransferLock'
 
 export interface FileEntry {
   name: string
@@ -13,6 +14,7 @@ export interface FileEntry {
 
 export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
   const { notify } = useNotifications()
+  const transferLock = useTransferLock()
   const currentPath = ref('.')
   const entries = ref<FileEntry[]>([])
   const loading = ref(false)
@@ -53,11 +55,17 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
   }
 
   function navigate (path: string) {
+    if (transferLock.active.value) {
+      return
+    }
     currentPath.value = path
     selected.value = []
   }
 
   function goUp () {
+    if (transferLock.active.value) {
+      return
+    }
     if (currentPath.value === '.') return
     const parts = currentPath.value.split('/')
     parts.pop()
@@ -85,9 +93,11 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     )
     uploading.value = true
     uploadProgress.value = 0
+    transferLock.begin('上传文件', file.name)
     try {
       await client.value.filePut(file, path, (sent, total) => {
         uploadProgress.value = Math.round((sent / total) * 100)
+        transferLock.update(file.name, sent, total)
       })
       notify(`已上传: ${file.name}`, 'success')
       await refresh()
@@ -96,6 +106,7 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     } finally {
       uploading.value = false
       uploadProgress.value = 0
+      transferLock.end()
     }
   }
 
@@ -104,8 +115,10 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     const path = currentPath.value === '.'
       ? name
       : `${currentPath.value}/${name}`
+    transferLock.begin('下载文件', name)
     try {
       const data = await client.value.fileGet(path)
+      transferLock.update(name, data.byteLength, data.byteLength)
       const blob = new Blob([data as BlobPart])
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -116,6 +129,8 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
       notify(`已下载: ${name}`, 'success')
     } catch (e: any) {
       notify(`下载失败: ${e.message}`, 'error')
+    } finally {
+      transferLock.end()
     }
   }
 

@@ -23,7 +23,8 @@
           <template #activator="{ props: tooltipProps }">
             <v-list-item
               v-bind="tooltipProps"
-              :to="item.path"
+              :disabled="transferLocked"
+              :to="transferLocked ? undefined : item.path"
               :prepend-icon="item.icon"
               :value="item.path"
               rounded="lg"
@@ -54,6 +55,14 @@
       </v-container>
     </v-main>
 
+    <TransferLockOverlay />
+
+    <PlatformNoticeDialog
+      v-model="showPlatformNotice"
+      :kind="platformNoticeKind"
+      @dismiss="dismissPlatformNotice"
+    />
+
     <v-snackbar-queue
       v-model="notifications"
       location="bottom"
@@ -66,14 +75,24 @@
 </template>
 
 <script lang="ts" setup>
+import PlatformNoticeDialog from '@/components/PlatformNoticeDialog.vue'
+import TransferLockOverlay from '@/components/TransferLockOverlay.vue'
 import { useEmbedMode } from '@/composables/useEmbedMode'
 import { useNotifications } from '@/composables/useNotifications'
+import { usePlatformNotice } from '@/composables/usePlatformNotice'
+import { useTransferLock } from '@/composables/useTransferLock'
 import { useUsb } from '@/composables/useUsb'
 import logo from '@/assets/logo.svg'
 
 const { notifications } = useNotifications()
 const { connected } = useUsb()
 const { isEmbed } = useEmbedMode()
+const { active: transferLocked } = useTransferLock()
+const {
+  show: showPlatformNotice,
+  kind: platformNoticeKind,
+  dismiss: dismissPlatformNotice,
+} = usePlatformNotice(isEmbed.value)
 
 const navItems = [
   { path: '/', icon: 'mdi-usb', title: '连接' },

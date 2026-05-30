@@ -5,8 +5,6 @@
     </div>
 
     <template v-else>
-      <LinuxUdevHint v-if="showLinuxUdevHint" />
-
       <div v-if="!connected" class="connection-empty pa-6">
       <div class="connection-empty__icon mb-4">
         <v-icon size="64" color="primary">mdi-usb</v-icon>
@@ -117,13 +115,10 @@ import { computed, ref } from 'vue'
 import { useUsb } from '@/composables/useUsb'
 import { extractAppVersion, extractPrettyName } from '@/utils/devinfo'
 import { formatBytes } from '@/utils/format'
-import { isLinux } from '@/utils/browser'
 import BrowserWarning from './BrowserWarning.vue'
-import LinuxUdevHint from './LinuxUdevHint.vue'
 
 const { connected, deviceInfo, devInfo, isSupported, connect, disconnect } = useUsb()
 const connecting = ref(false)
-const showLinuxUdevHint = isLinux()
 
 const versionFields = computed(() => {
   const info = devInfo.value
