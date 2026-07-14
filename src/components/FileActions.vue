@@ -19,12 +19,20 @@
     </v-btn>
 
     <v-btn
-      prepend-icon="mdi-download"
+      prepend-icon="mdi-folder-upload"
       variant="text"
-      :disabled="selected.length !== 1 || isDirSelected"
+      @click="$emit('uploadFolder')"
+    >
+      上传文件夹
+    </v-btn>
+
+    <v-btn
+      :prepend-icon="isDirSelected ? 'mdi-folder-download' : 'mdi-download'"
+      variant="text"
+      :disabled="selected.length !== 1"
       @click="$emit('download')"
     >
-      下载
+      {{ isDirSelected ? '下载文件夹' : '下载' }}
     </v-btn>
 
     <v-btn
@@ -79,6 +87,7 @@ defineEmits<{
   goUp: []
   refresh: []
   upload: []
+  uploadFolder: []
   download: []
   delete: []
   rename: []

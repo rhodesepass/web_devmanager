@@ -31,11 +31,20 @@
         @go-up="goUp"
         @refresh="refresh"
         @upload="showUpload = true"
+        @upload-folder="onUploadFolderClick"
         @download="onDownload"
         @delete="onDelete"
         @rename="showRename = true"
         @mkdir="showMkdir = true"
       />
+
+      <input
+        ref="folderInput"
+        webkitdirectory
+        class="d-none"
+        type="file"
+        @change="onFolderSelected"
+      >
 
       <FileList
         :items="entries"
@@ -101,7 +110,9 @@ const {
   goUp,
   refresh,
   upload,
+  uploadFolder,
   download,
+  downloadFolder,
   deleteEntry,
   renameEntry,
   createDirectory,
@@ -111,6 +122,7 @@ const showUpload = ref(false)
 const showRename = ref(false)
 const showMkdir = ref(false)
 const showDeleteConfirm = ref(false)
+const folderInput = ref<HTMLInputElement | null>(null)
 
 function onNavigate (name: string) {
   navigate(currentPath.value === '.' ? name : `${currentPath.value}/${name}`)
@@ -124,8 +136,26 @@ async function onUpload (files: File[]) {
 }
 
 function onDownload () {
-  if (selected.value.length === 1) {
-    download(selected.value[0])
+  if (selected.value.length !== 1) return
+  const name = selected.value[0]
+  const entry = entries.value.find(e => e.name === name)
+  if (entry?.isDir) {
+    downloadFolder(name)
+  } else {
+    download(name)
+  }
+}
+
+function onUploadFolderClick () {
+  folderInput.value?.click()
+}
+
+async function onFolderSelected (event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = input.files ? Array.from(input.files) : []
+  input.value = ''
+  if (files.length > 0) {
+    await uploadFolder(files)
   }
 }
 

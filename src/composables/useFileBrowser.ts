@@ -1,4 +1,5 @@
 import { ref, computed, watch, type Ref } from 'vue'
+import JSZip from 'jszip'
 import type { UsbResponderClient } from '@/usb'
 import { useNotifications } from './useNotifications'
 import { useTransferLock } from './useTransferLock'
@@ -110,6 +111,87 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     }
   }
 
+  /** 上传整个文件夹：files 来自 <input webkitdirectory>，用各自的 webkitRelativePath 还原目录结构 */
+  async function uploadFolder (files: File[]) {
+    const c = client.value
+    if (!c || files.length === 0) return
+    const base = currentPath.value === '.' ? '' : `${currentPath.value}/`
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
+    let sentTotal = 0
+
+    uploading.value = true
+    uploadProgress.value = 0
+    transferLock.begin('上传文件夹', `${files.length} 个文件`)
+    try {
+      for (const [i, file] of files.entries()) {
+        const rel = file.webkitRelativePath || file.name
+        const label = `[${i + 1}/${files.length}] ${rel}`
+        await c.filePut(file, base + rel, (sent, _total) => {
+          const bytes = sentTotal + sent
+          uploadProgress.value = totalBytes > 0 ? Math.round((bytes / totalBytes) * 100) : 0
+          transferLock.update(label, bytes, totalBytes)
+        })
+        sentTotal += file.size
+      }
+      notify(`已上传文件夹：${files.length} 个文件`, 'success')
+      await refresh()
+    } catch (e: any) {
+      notify(`上传文件夹失败: ${e.message}`, 'error')
+    } finally {
+      uploading.value = false
+      uploadProgress.value = 0
+      transferLock.end()
+    }
+  }
+
+  /** 递归下载设备目录，打包成 zip 下载到本地 */
+  async function downloadFolder (name: string) {
+    const c = client.value
+    if (!c) return
+    const rootPath = currentPath.value === '.' ? name : `${currentPath.value}/${name}`
+
+    transferLock.begin('下载文件夹', name)
+    try {
+      const zip = new JSZip()
+
+      const walk = async (devPath: string, folder: JSZip) => {
+        const { files, dirs } = await c.fileList(devPath)
+        for (const raw of files) {
+          const fileName = raw.trim().replace(/\/$/, '')
+          if (!fileName) continue
+          transferLock.update(fileName)
+          const data = await c.fileGet(`${devPath}/${fileName}`, (got, total) => {
+            transferLock.update(fileName, got, total)
+          })
+          folder.file(fileName, data)
+        }
+        for (const raw of dirs) {
+          const dirName = raw.trim().replace(/\/$/, '')
+          if (!dirName || dirName === '.' || dirName === '..') continue
+          const sub = folder.folder(dirName)
+          if (sub) {
+            await walk(`${devPath}/${dirName}`, sub)
+          }
+        }
+      }
+
+      await walk(rootPath, zip)
+
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${name}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+      notify(`已下载文件夹: ${name}.zip`, 'success')
+    } catch (e: any) {
+      notify(`下载文件夹失败: ${e.message}`, 'error')
+    } finally {
+      transferLock.end()
+    }
+  }
+
   async function download (name: string) {
     if (!client.value) return
     const path = currentPath.value === '.'
@@ -199,7 +281,9 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     goUp,
     refresh,
     upload,
+    uploadFolder,
     download,
+    downloadFolder,
     deleteEntry,
     renameEntry,
     createDirectory,
