@@ -74,7 +74,7 @@
         :class="{ 'connection-storage-row--dual': sdMounted }"
       >
         <div class="connection-storage-item">
-          <div class="text-caption text-medium-emphasis mb-1">NAND</div>
+          <div class="text-caption text-medium-emphasis mb-1">系统盘</div>
           <v-progress-linear
             :model-value="nandPercent"
             color="primary"
@@ -90,7 +90,7 @@
         </div>
 
         <div v-if="sdMounted" class="connection-storage-item">
-          <div class="text-caption text-medium-emphasis mb-1">SD 卡</div>
+          <div class="text-caption text-medium-emphasis mb-1">数据盘</div>
           <v-progress-linear
             :model-value="sdPercent"
             color="success"

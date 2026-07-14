@@ -48,13 +48,13 @@ export const MATERIAL_STORAGES: Record<MaterialStorage, MaterialStorageConfig> =
   nand: {
     storage: 'nand',
     assetsBasePath: 'assets',
-    displayLabel: 'NAND',
+    displayLabel: '系统盘',
     desireStorage: 'nand',
   },
   sd: {
     storage: 'sd',
     assetsBasePath: 'sd/assets',
-    displayLabel: 'SD',
+    displayLabel: '数据盘',
     desireStorage: 'sd',
   },
 }

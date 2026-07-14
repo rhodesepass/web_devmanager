@@ -82,7 +82,7 @@
     type="info"
     variant="tonal"
   >
-    设备上暂无素材。可上传 zip 素材包到 NAND{{ sdMounted ? ' 或 SD' : '' }}。
+    设备上暂无素材。可上传 zip 素材包到系统盘{{ sdMounted ? ' 或数据盘' : '' }}。
   </v-alert>
 
   <div v-else class="d-flex justify-center py-12">
