@@ -51,6 +51,56 @@
       >
         刷新
       </v-btn>
+
+      <v-btn
+        v-if="!isEmbed"
+        :color="selectionMode ? 'primary' : undefined"
+        :disabled="busy"
+        :prepend-icon="selectionMode ? 'mdi-close' : 'mdi-checkbox-multiple-marked-outline'"
+        variant="tonal"
+        @click="toggleSelectionMode"
+      >
+        {{ selectionMode ? '退出选择' : '批量选择' }}
+      </v-btn>
+      </div>
+
+      <div
+        v-if="!isEmbed && selectionMode"
+        class="d-flex flex-wrap align-center ga-2 mb-4"
+      >
+        <v-btn
+          :disabled="busy || filteredAssets.length === 0"
+          size="small"
+          variant="tonal"
+          @click="toggleSelectAll"
+        >
+          {{ allVisibleSelected ? '取消全选' : '全选当前' }}
+        </v-btn>
+
+        <span class="text-body-2 text-medium-emphasis">已选 {{ selectedCount }} 个</span>
+
+        <v-spacer />
+
+        <v-btn
+          :disabled="selectedCount === 0 || busy"
+          prepend-icon="mdi-download"
+          size="small"
+          variant="tonal"
+          @click="onBatchLocal"
+        >
+          下载到本地
+        </v-btn>
+
+        <v-btn
+          color="primary"
+          :disabled="selectedCount === 0 || busy"
+          prepend-icon="mdi-usb"
+          size="small"
+          variant="flat"
+          @click="onBatchToPass"
+        >
+          {{ connected ? '传入通行证' : '连接后传入' }}
+        </v-btn>
       </div>
 
       <v-alert
@@ -80,6 +130,9 @@
       variant="tonal"
     >
       <div class="text-body-2 mb-2">
+        <span v-if="batchProgress" class="text-medium-emphasis">
+          [{{ batchProgress.current }}/{{ batchProgress.total }}]
+        </span>
         正在下载：{{ downloadProgress.name }}
       </div>
       <v-progress-linear
@@ -176,7 +229,10 @@
                 :asset="asset"
                 :disabled="busy"
                 :downloading="downloadingAssetUuid === asset.uuid"
+                :selectable="selectionMode"
+                :selected="selectedUuids.has(asset.uuid)"
                 @download="onDownloadClick"
+                @toggle="toggleAsset"
               />
             </v-col>
           </v-row>
@@ -228,7 +284,9 @@
       <v-card title="传入通行证">
         <v-card-text>
           <p class="text-body-2 text-medium-emphasis mb-4">
-            将下载素材 zip 并解压上传到设备。
+            {{ pendingBatch
+              ? `将下载并上传选中的 ${pendingBatch.length} 个素材到设备。`
+              : '将下载素材 zip 并解压上传到设备。' }}
           </p>
           <v-select
             v-model="uploadStorage"
@@ -300,6 +358,7 @@
     transferProgress,
     storageOptions,
     uploadZip,
+    reloadAssets,
   } = useMaterials(toRef(client), sdMounted, { autoRefresh: false })
 
   const allAssets = ref<SharedMaterialAsset[]>([])
@@ -319,6 +378,12 @@
   const pendingAsset = ref<SharedMaterialAsset | null>(null)
   const uploadStorage = ref<MaterialStorage>('nand')
   const showConnectHint = ref(true)
+
+  const selectionMode = ref(false)
+  const selectedUuids = ref<Set<string>>(new Set())
+  // pendingBatch 非空表示存储对话框确认后要批量处理，null 表示单个（pendingAsset）
+  const pendingBatch = ref<SharedMaterialAsset[] | null>(null)
+  const batchProgress = ref<{ current: number, total: number, name: string } | null>(null)
 
   const filteredAssets = computed(() =>
     filterSharedMaterials(allAssets.value, searchQuery.value),
@@ -377,6 +442,94 @@
       value: o.storage,
     })),
   )
+
+  const selectedCount = computed(() => selectedUuids.value.size)
+
+  const allVisibleSelected = computed(() =>
+    filteredAssets.value.length > 0
+    && filteredAssets.value.every(a => selectedUuids.value.has(a.uuid)),
+  )
+
+  function toggleSelectionMode () {
+    selectionMode.value = !selectionMode.value
+    if (!selectionMode.value) {
+      selectedUuids.value = new Set()
+    }
+  }
+
+  function toggleAsset (asset: SharedMaterialAsset) {
+    const next = new Set(selectedUuids.value)
+    if (next.has(asset.uuid)) {
+      next.delete(asset.uuid)
+    } else {
+      next.add(asset.uuid)
+    }
+    selectedUuids.value = next
+  }
+
+  function toggleSelectAll () {
+    if (allVisibleSelected.value) {
+      selectedUuids.value = new Set()
+    } else {
+      selectedUuids.value = new Set(filteredAssets.value.map(a => a.uuid))
+    }
+  }
+
+  function selectedAssets (): SharedMaterialAsset[] {
+    return filteredAssets.value.filter(a => selectedUuids.value.has(a.uuid))
+  }
+
+  function onBatchLocal () {
+    const assets = selectedAssets()
+    if (assets.length === 0) {
+      return
+    }
+    void runBatchLocalDownload(assets)
+  }
+
+  function onBatchToPass () {
+    if (!connected.value) {
+      notify('请先连接通行证设备', 'warning')
+      void router.push('/')
+      return
+    }
+    const assets = selectedAssets()
+    if (assets.length === 0) {
+      return
+    }
+    pendingBatch.value = assets
+    pendingAsset.value = null
+    uploadStorage.value = 'nand'
+    showStorageDialog.value = true
+  }
+
+  async function runBatchLocalDownload (assets: SharedMaterialAsset[]) {
+    let ok = 0
+    for (const [i, asset] of assets.entries()) {
+      batchProgress.value = { current: i + 1, total: assets.length, name: asset.name }
+      downloading.value = true
+      downloadingAssetUuid.value = asset.uuid
+      downloadProgress.value = { name: asset.name, loaded: 0, total: null }
+      transferLock.begin('批量下载素材', asset.name)
+      try {
+        await triggerSharedMaterialLocalDownload(asset, (loaded, total) => {
+          downloadProgress.value = { name: asset.name, loaded, total }
+          transferLock.update(asset.name, loaded, total ?? 0)
+        })
+        ok++
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error)
+        notify(`下载失败「${asset.name}」: ${msg}`, 'error')
+      } finally {
+        downloading.value = false
+        downloadingAssetUuid.value = null
+        downloadProgress.value = null
+        transferLock.end()
+      }
+    }
+    batchProgress.value = null
+    notify(`批量下载完成：成功 ${ok} / ${assets.length}`, ok === assets.length ? 'success' : 'warning')
+  }
 
   async function loadManifest () {
     loading.value = true
@@ -450,35 +603,62 @@
   }
 
   async function confirmUploadToPass () {
-    const asset = pendingAsset.value
-    if (!asset || !connected.value) {
+    if (!connected.value) {
+      return
+    }
+    const batch = pendingBatch.value
+    const assets = batch ?? (pendingAsset.value ? [pendingAsset.value] : [])
+    if (assets.length === 0) {
       return
     }
     showStorageDialog.value = false
-    downloading.value = true
-    downloadingAssetUuid.value = asset.uuid
-    downloadProgress.value = { name: asset.name, loaded: 0, total: null }
-    transferLock.begin('下载素材', asset.name)
 
-    try {
-      const file = await downloadSharedMaterialZipFile(asset, (loaded, total) => {
-        downloadProgress.value = { name: asset.name, loaded, total }
-        transferLock.update(asset.name, loaded, total ?? 0)
-      })
-      downloading.value = false
-      downloadingAssetUuid.value = null
-      downloadProgress.value = null
-      transferLock.end()
+    let ok = 0
+    for (const [i, asset] of assets.entries()) {
+      if (batch) {
+        batchProgress.value = { current: i + 1, total: assets.length, name: asset.name }
+      }
+      try {
+        downloading.value = true
+        downloadingAssetUuid.value = asset.uuid
+        downloadProgress.value = { name: asset.name, loaded: 0, total: null }
+        transferLock.begin('下载素材', asset.name)
 
-      await uploadZip(file, uploadStorage.value)
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error)
-      notify(`传入通行证失败: ${msg}`, 'error')
-    } finally {
-      downloading.value = false
-      downloadingAssetUuid.value = null
-      downloadProgress.value = null
-      transferLock.end()
+        const file = await downloadSharedMaterialZipFile(asset, (loaded, total) => {
+          downloadProgress.value = { name: asset.name, loaded, total }
+          transferLock.update(asset.name, loaded, total ?? 0)
+        })
+
+        downloading.value = false
+        downloadingAssetUuid.value = null
+        downloadProgress.value = null
+        transferLock.end()
+
+        // 批量时跳过每次的素材重载，整批结束后统一重载一次
+        await uploadZip(file, uploadStorage.value, { skipReload: !!batch })
+        ok++
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error)
+        notify(`传入通行证失败「${asset.name}」: ${msg}`, 'error')
+      } finally {
+        downloading.value = false
+        downloadingAssetUuid.value = null
+        downloadProgress.value = null
+        transferLock.end()
+      }
+    }
+
+    if (batch) {
+      batchProgress.value = null
+      pendingBatch.value = null
+      if (ok > 0) {
+        try {
+          await reloadAssets()
+        } catch {
+          // reloadAssets 内部已提示
+        }
+      }
+      notify(`批量传入完成：成功 ${ok} / ${assets.length}`, ok === assets.length ? 'success' : 'warning')
     }
   }
 

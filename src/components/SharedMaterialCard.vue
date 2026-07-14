@@ -1,9 +1,21 @@
 <template>
-  <v-card class="shared-material-card h-100 d-flex flex-column" variant="outlined">
+  <v-card
+    class="shared-material-card h-100 d-flex flex-column"
+    :class="{ 'shared-material-card--selected': selectable && selected }"
+    :ripple="selectable"
+    variant="outlined"
+    @click="selectable && $emit('toggle', asset)"
+  >
     <div
       ref="previewRef"
       class="card-preview bg-surface-variant"
     >
+      <v-checkbox-btn
+        v-if="selectable"
+        class="card-select-check"
+        :model-value="selected"
+        @click.stop="$emit('toggle', asset)"
+      />
       <video
         v-if="previewUrl && previewVisible"
         autoplay
@@ -57,7 +69,7 @@
       </div>
     </v-card-text>
 
-    <v-card-actions class="pt-0">
+    <v-card-actions v-if="!selectable" class="pt-0">
       <v-btn
         block
         :disabled="!asset.download_url || disabled"
@@ -85,10 +97,13 @@
     asset: SharedMaterialAsset
     disabled?: boolean
     downloading?: boolean
+    selectable?: boolean
+    selected?: boolean
   }>()
 
   defineEmits<{
     download: [asset: SharedMaterialAsset]
+    toggle: [asset: SharedMaterialAsset]
   }>()
 
   const previewRef = ref<HTMLElement | null>(null)
@@ -128,6 +143,20 @@
 <style scoped>
 .shared-material-card {
   overflow: hidden;
+}
+
+.shared-material-card--selected {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
+}
+
+.card-select-check {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 4px;
 }
 
 .card-preview {

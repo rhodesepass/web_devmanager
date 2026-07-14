@@ -48,7 +48,7 @@ async function assertStorageCapacity (
   const label = MATERIAL_STORAGES[storage].displayLabel
 
   if (storage === 'sd' && devInfo.sd_mounted !== '1') {
-    throw new Error('SD 卡未挂载，无法上传到 SD 存储')
+    throw new Error('SD 卡未挂载，无法上传到数据盘')
   }
 
   const freeKey = storage === 'nand' ? 'nand_free_bytes' : 'sd_free_bytes'
@@ -293,7 +293,11 @@ export function useMaterials (
     return null
   }
 
-  async function uploadZip (file: File, storage: MaterialStorage) {
+  async function uploadZip (
+    file: File,
+    storage: MaterialStorage,
+    options: { skipReload?: boolean } = {},
+  ) {
     if (!client.value) {
       return
     }
@@ -335,9 +339,14 @@ export function useMaterials (
         sent += item.data.byteLength
       }
 
-      await reloadAssetsOnDevice()
+      // 批量上传时跳过每次的重载/刷新，由调用方在整批结束后统一执行一次
+      if (!options.skipReload) {
+        await reloadAssetsOnDevice()
+      }
       notify(`已上传素材: ${extracted.name}`, 'success')
-      await refresh()
+      if (!options.skipReload) {
+        await refresh()
+      }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       notify(`上传失败: ${msg}`, 'error')
@@ -384,7 +393,15 @@ export function useMaterials (
           isUpload: false,
         }
         transferLock.update(name, received, totalBytes)
-        const data = await client.value.fileGet(`${basePath}/${name}`)
+        const data = await client.value.fileGet(`${basePath}/${name}`, (got, _total) => {
+          transferProgress.value = {
+            fileName: name,
+            bytes: received + got,
+            total: totalBytes,
+            isUpload: false,
+          }
+          transferLock.update(name, received + got, totalBytes)
+        })
         zipFiles.push({ name, data })
         received += sizes[name] ?? data.byteLength
         transferProgress.value = {
@@ -461,6 +478,7 @@ export function useMaterials (
     storageOptions,
     refresh,
     uploadZip,
+    reloadAssets: reloadAssetsOnDevice,
     downloadZip,
     deleteMaterial,
   }
