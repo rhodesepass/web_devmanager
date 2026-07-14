@@ -5,18 +5,30 @@ import {
   encodeCommandExec,
   decodeCommandResult,
 } from '@/protocol'
-import { DEFAULT_FILE_CHUNK } from './constants'
+import { DEFAULT_FILE_CHUNK, DOWNLOAD_SEGMENT, MAX_PAYLOAD } from './constants'
 import { UsbTransport } from './transport'
 import type { KvMap, CommandResult } from '@/protocol'
 
 export class UsbResponderClient {
   constructor (readonly transport: UsbTransport) {}
 
+  // USB 是半双工单通道，一次只能有一个在途的“请求-响应”事务。两个操作并发
+  // 交错发帧/收帧会让请求与响应错位、协议永久失步（表现为所有请求卡死无响应）。
+  // 这里在客户端层串行化每个 public 方法，等价于 Android 端 repository 的 mutex.withLock。
+  // 内部相互调用（filePut→dirMkdir、fileGet→fileStat）走无锁私有实现，避免同一事务自死锁。
+  private readonly mutex = new Mutex()
+
   async hello (): Promise<KvMap> {
-    return this.requestKv(MsgType.HELLO, new Uint8Array(0))
+    return this.mutex.runExclusive(() =>
+      this.requestKv(MsgType.HELLO, new Uint8Array(0)),
+    )
   }
 
   async devinfo (): Promise<KvMap> {
+    return this.mutex.runExclusive(() => this.devinfoImpl())
+  }
+
+  private async devinfoImpl (): Promise<KvMap> {
     const rid = this.transport.nextId()
     await this.transport.sendFrame(MsgType.DEVINFO, new Uint8Array(0), rid)
 
@@ -32,14 +44,20 @@ export class UsbResponderClient {
   }
 
   async fileList (path: string): Promise<{ files: string[]; dirs: string[] }> {
-    const kv = await this.requestKv(MsgType.FILE_LIST, encodeKv([['path', path]]))
-    return {
-      files: kv.files ? kv.files.split('\n').filter(Boolean) : [],
-      dirs: kv.dirs ? kv.dirs.split('\n').filter(Boolean) : [],
-    }
+    return this.mutex.runExclusive(async () => {
+      const kv = await this.requestKv(MsgType.FILE_LIST, encodeKv([['path', path]]))
+      return {
+        files: kv.files ? kv.files.split('\n').filter(Boolean) : [],
+        dirs: kv.dirs ? kv.dirs.split('\n').filter(Boolean) : [],
+      }
+    })
   }
 
   async fileStat (path: string): Promise<KvMap> {
+    return this.mutex.runExclusive(() => this.fileStatImpl(path))
+  }
+
+  private async fileStatImpl (path: string): Promise<KvMap> {
     return this.requestKv(MsgType.FILE_STAT, encodeKv([['path', path]]))
   }
 
@@ -48,9 +66,17 @@ export class UsbResponderClient {
     remotePath: string,
     onProgress?: (sent: number, total: number) => void,
   ): Promise<void> {
+    return this.mutex.runExclusive(() => this.filePutImpl(file, remotePath, onProgress))
+  }
+
+  private async filePutImpl (
+    file: File,
+    remotePath: string,
+    onProgress?: (sent: number, total: number) => void,
+  ): Promise<void> {
     const parent = parentDir(remotePath)
     if (parent) {
-      await this.dirMkdir(parent, true)
+      await this.dirMkdirImpl(parent, true)
     }
 
     const rid = this.transport.nextId()
@@ -81,10 +107,9 @@ export class UsbResponderClient {
     await this.expectKv(rid)
   }
 
-  async fileGet (remotePath: string): Promise<Uint8Array> {
+  private async fileGetFrame (items: [string, string][]): Promise<Uint8Array> {
     const rid = this.transport.nextId()
-    const payload = encodeKv([['path', remotePath]])
-    await this.transport.sendFrame(MsgType.FILE_GET, payload, rid)
+    await this.transport.sendFrame(MsgType.FILE_GET, encodeKv(items), rid)
 
     const frame = await this.transport.recvFrame()
     if (frame.type === MsgType.ERROR) {
@@ -97,21 +122,79 @@ export class UsbResponderClient {
     return frame.payload
   }
 
+  async fileGet (
+    remotePath: string,
+    onProgress?: (got: number, total: number) => void,
+  ): Promise<Uint8Array> {
+    return this.mutex.runExclusive(() => this.fileGetImpl(remotePath, onProgress))
+  }
+
+  private async fileGetImpl (
+    remotePath: string,
+    onProgress?: (got: number, total: number) => void,
+  ): Promise<Uint8Array> {
+    // 单帧 payload 上限 8MB(MAX_PAYLOAD);更大的文件用 offset/length 分段,
+    // ≤8MB 保持单帧路径,兼容不认识 offset 参数的旧固件。
+    const stat = await this.fileStatImpl(remotePath)
+    const size = Number.parseInt(stat.size ?? '0', 10)
+    if (!Number.isFinite(size) || size <= MAX_PAYLOAD) {
+      const data = await this.fileGetFrame([['path', remotePath]])
+      onProgress?.(data.length, data.length)
+      return data
+    }
+
+    const out = new Uint8Array(size)
+    let offset = 0
+    while (offset < size) {
+      const want = Math.min(DOWNLOAD_SEGMENT, size - offset)
+      const piece = await this.fileGetFrame([
+        ['path', remotePath],
+        ['offset', String(offset)],
+        ['length', String(want)],
+      ])
+      if (piece.length === 0) {
+        break // 文件在拉取过程中被截短
+      }
+      out.set(piece, offset)
+      offset += piece.length
+      onProgress?.(offset, size)
+    }
+    if (offset !== size) {
+      throw new Error(`分段下载不完整: 期望 ${size} 字节,实际 ${offset}(文件可能在传输中被修改)`)
+    }
+    return out
+  }
+
   async fileDelete (path: string): Promise<void> {
-    await this.requestKv(MsgType.FILE_DELETE, encodeKv([['path', path]]))
+    await this.mutex.runExclusive(() =>
+      this.requestKv(MsgType.FILE_DELETE, encodeKv([['path', path]])),
+    )
   }
 
   async fileRename (from: string, to: string): Promise<void> {
-    await this.requestKv(MsgType.FILE_RENAME, encodeKv([['from', from], ['to', to]]))
+    await this.mutex.runExclusive(() =>
+      this.requestKv(MsgType.FILE_RENAME, encodeKv([['from', from], ['to', to]])),
+    )
   }
 
   async dirMkdir (path: string, parents = false): Promise<void> {
+    await this.mutex.runExclusive(() => this.dirMkdirImpl(path, parents))
+  }
+
+  private async dirMkdirImpl (path: string, parents = false): Promise<void> {
     const items: [string, string][] = [['path', path]]
     if (parents) items.push(['parents', '1'])
     await this.requestKv(MsgType.FILE_MKDIR, encodeKv(items))
   }
 
   async commandExec (
+    command: string,
+    options?: { timeoutMs?: number; maxStdout?: number; maxStderr?: number },
+  ): Promise<CommandResult> {
+    return this.mutex.runExclusive(() => this.commandExecImpl(command, options))
+  }
+
+  private async commandExecImpl (
     command: string,
     options?: { timeoutMs?: number; maxStdout?: number; maxStderr?: number },
   ): Promise<CommandResult> {
@@ -167,6 +250,17 @@ export class UsbResponderClient {
       throw new Error(`unexpected response type: ${frame.type}`)
     }
     return decodeKv(frame.payload)
+  }
+}
+
+/** 把异步事务排成一条队列串行执行。前一个无论成功失败都不阻断后续。 */
+class Mutex {
+  private tail: Promise<unknown> = Promise.resolve()
+
+  runExclusive<T> (fn: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(fn, fn)
+    this.tail = result.then(() => undefined, () => undefined)
+    return result
   }
 }
 
