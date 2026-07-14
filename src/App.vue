@@ -140,6 +140,7 @@ const navItems = [
   { path: '/files', icon: 'mdi-folder', title: '文件' },
   { path: '/materials', icon: 'mdi-play-box-multiple', title: '素材' },
   { path: '/materials/share', icon: 'mdi-earth', title: '素材库' },
+  { path: '/dispimg', icon: 'mdi-image-multiple', title: '扩列图' },
   { path: '/terminal', icon: 'mdi-console', title: '终端' },
   { path: '/flash', icon: 'mdi-chip', title: '烧录' },
 ]

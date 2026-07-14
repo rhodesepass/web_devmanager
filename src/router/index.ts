@@ -22,6 +22,10 @@ const router = createRouter({
       meta: { embedCapable: true },
     },
     {
+      path: '/dispimg',
+      component: () => import('@/pages/dispImg.vue'),
+    },
+    {
       path: '/terminal',
       component: () => import('@/pages/terminal.vue'),
     },
