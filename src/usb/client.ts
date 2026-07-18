@@ -7,7 +7,7 @@ import {
 } from '@/protocol'
 import { DEFAULT_FILE_CHUNK, DOWNLOAD_SEGMENT, MAX_PAYLOAD } from './constants'
 import { UsbTransport } from './transport'
-import type { KvMap, CommandResult } from '@/protocol'
+import type { KvMap, CommandResult, Frame } from '@/protocol'
 
 export class UsbResponderClient {
   constructor (readonly transport: UsbTransport) {}
@@ -31,15 +31,7 @@ export class UsbResponderClient {
   private async devinfoImpl (): Promise<KvMap> {
     const rid = this.transport.nextId()
     await this.transport.sendFrame(MsgType.DEVINFO, new Uint8Array(0), rid)
-
-    const frame = await this.transport.recvFrame()
-    if (frame.type === MsgType.ERROR) {
-      const kv = decodeKv(frame.payload)
-      throw new Error(kv.message ?? 'unknown error')
-    }
-    if (frame.type !== MsgType.DEVINFO) {
-      throw new Error(`unexpected response type: ${frame.type}`)
-    }
+    const frame = await this.recvResponse(rid, MsgType.DEVINFO)
     return decodeKv(frame.payload)
   }
 
@@ -110,15 +102,7 @@ export class UsbResponderClient {
   private async fileGetFrame (items: [string, string][]): Promise<Uint8Array> {
     const rid = this.transport.nextId()
     await this.transport.sendFrame(MsgType.FILE_GET, encodeKv(items), rid)
-
-    const frame = await this.transport.recvFrame()
-    if (frame.type === MsgType.ERROR) {
-      const kv = decodeKv(frame.payload)
-      throw new Error(kv.message ?? 'unknown error')
-    }
-    if (frame.type !== MsgType.FILE_GET) {
-      throw new Error(`unexpected response type: ${frame.type}`)
-    }
+    const frame = await this.recvResponse(rid, MsgType.FILE_GET)
     return frame.payload
   }
 
@@ -206,50 +190,37 @@ export class UsbResponderClient {
       options?.maxStderr ?? 256 * 1024,
     )
     await this.transport.sendFrame(MsgType.COMMAND_EXEC, payload, rid)
-
-    const frame = await this.transport.recvFrame()
-    if (frame.type === MsgType.ERROR) {
-      const kv = decodeKv(frame.payload)
-      throw new Error(kv.message ?? 'unknown error')
-    }
-    if (frame.type !== MsgType.COMMAND_RESULT) {
-      throw new Error(`unexpected response type: ${frame.type}`)
-    }
+    const frame = await this.recvResponse(rid, MsgType.COMMAND_RESULT)
     return decodeCommandResult(frame.payload)
   }
 
   private async requestKv (type: MsgType, payload: Uint8Array): Promise<KvMap> {
-    const sendOnce = async (): Promise<KvMap> => {
-      const rid = this.transport.nextId()
-      await this.transport.sendFrame(type, payload, rid)
-      return this.expectKv(rid)
-    }
-    try {
-      return await sendOnce()
-    } catch (error: unknown) {
-      if (isRequestIdMismatch(error)) {
-        return sendOnce()
-      }
-      throw error
-    }
+    const rid = this.transport.nextId()
+    await this.transport.sendFrame(type, payload, rid)
+    return this.expectKv(rid)
   }
 
   private async expectKv (reqId: number): Promise<KvMap> {
-    let frame = await this.transport.recvFrame()
-    if (frame.requestId !== reqId) {
-      frame = await this.transport.recvFrame()
-      if (frame.requestId !== reqId) {
-        throw new Error(`request_id mismatch: expected ${reqId}, got ${frame.requestId}`)
-      }
-    }
-    if (frame.type === MsgType.ERROR) {
-      const kv = decodeKv(frame.payload)
-      throw new Error(kv.message ?? 'unknown error')
-    }
-    if (frame.type !== MsgType.STATUS) {
-      throw new Error(`unexpected response type: ${frame.type}`)
-    }
+    const frame = await this.recvResponse(reqId, MsgType.STATUS)
     return decodeKv(frame.payload)
+  }
+
+  /** 收本事务的响应帧。request_id 不符的帧是上个超时/失败事务的迟到应答,
+   * 直接丢弃继续收(等价于 pyhost 的 drain),而不是当错误抛出去。 */
+  private async recvResponse (reqId: number, expected: MsgType): Promise<Frame> {
+    for (let drained = 0; drained < 8; drained++) {
+      const frame = await this.transport.recvFrame()
+      if (frame.requestId !== reqId) continue
+      if (frame.type === MsgType.ERROR) {
+        const kv = decodeKv(frame.payload)
+        throw new Error(kv.message ?? 'unknown error')
+      }
+      if (frame.type !== expected) {
+        throw new Error(`unexpected response type: ${frame.type}`)
+      }
+      return frame
+    }
+    throw new Error(`request_id mismatch: expected ${reqId}`)
   }
 }
 
@@ -262,10 +233,6 @@ class Mutex {
     this.tail = result.then(() => undefined, () => undefined)
     return result
   }
-}
-
-function isRequestIdMismatch (error: unknown): boolean {
-  return error instanceof Error && error.message.includes('request_id mismatch')
 }
 
 /** 相对路径的父目录；无 `/` 时返回 null。 */

@@ -1,4 +1,4 @@
-import { encodeFrame, decodeFrame, HEADER_SIZE, MAX_PAYLOAD, MsgType, logUsbProtocolFrame } from '@/protocol'
+import { encodeFrame, decodeFrame, HEADER_SIZE, MAGIC, MAX_PAYLOAD, MsgType, VERSION, logUsbProtocolFrame } from '@/protocol'
 import { USB_REQUEST_CHUNK, DEFAULT_TIMEOUT } from './constants'
 import type { Frame } from '@/protocol'
 
@@ -9,8 +9,10 @@ export class UsbTransport {
   private epIn = 0x81
   private epOut = 0x02
   private epOutPacketSize = 64
+  private epInPacketSize = 64
   private rxBuffer = new Uint8Array(1024 * 1024)
   private rxLength = 0
+  private pendingRead: Promise<void> | null = null
   private requestId = 0
   private timeout = DEFAULT_TIMEOUT
   private disconnectCb: DisconnectCallback | null = null
@@ -61,7 +63,10 @@ export class UsbTransport {
     const iface = this.device.configuration?.interfaces[0]
     if (iface) {
       for (const ep of iface.alternate.endpoints) {
-        if (ep.direction === 'in') this.epIn = ep.endpointNumber
+        if (ep.direction === 'in') {
+          this.epIn = ep.endpointNumber
+          this.epInPacketSize = ep.packetSize
+        }
         if (ep.direction === 'out') {
           this.epOut = ep.endpointNumber
           this.epOutPacketSize = ep.packetSize
@@ -70,6 +75,7 @@ export class UsbTransport {
     }
 
     this.rxLength = 0
+    this.pendingRead = null
     this.requestId = 0
 
     navigator.usb.addEventListener('disconnect', this.onUsbDisconnect)
@@ -101,32 +107,76 @@ export class UsbTransport {
     return id
   }
 
+  /** 与固件 responder.c read_frame_buffered 同一套自愈逻辑:帧内容层面的错误
+   * (坏 magic/version、payload_len 越界、CRC 不符)一律视为字节流失步,扫下一个
+   * MAGIC 重新对帧后继续收,绝不抛错——以前这里直接 throw,一个坏帧头就把
+   * rxBuffer 卡成永久错误,之后所有请求(包括判活)都立刻死于同一个残头。 */
   async recvFrame (): Promise<Frame> {
-    while (this.rxLength < HEADER_SIZE) {
-      await this.readSome()
+    try {
+      return await this.recvFrameInner()
+    } catch (error) {
+      // 读超时/传输失败:缓冲里的半截帧已不可信——断帧的前缀带着真 MAGIC,
+      // 后续字节会恰好补进 plen 字段拼出"看似合法"的巨长帧头,resync 识别
+      // 不了,只会一轮轮空等超时(对齐固件的 FRAME_STALE 整体丢弃)
+      this.rxLength = 0
+      throw error
     }
+  }
 
-    const dv = new DataView(this.rxBuffer.buffer, 0, this.rxLength)
-    const payloadLen = dv.getUint32(16, true)
+  private async recvFrameInner (): Promise<Frame> {
+    for (;;) {
+      while (this.rxLength < HEADER_SIZE) {
+        await this.readSome(HEADER_SIZE - this.rxLength)
+      }
 
-    if (payloadLen > MAX_PAYLOAD) {
-      throw new Error(`payload too large: ${payloadLen}`)
+      const dv = new DataView(this.rxBuffer.buffer, 0, this.rxLength)
+      if (dv.getUint32(0, true) !== MAGIC || dv.getUint16(4, true) !== VERSION) {
+        this.resyncToMagic()
+        continue
+      }
+      const payloadLen = dv.getUint32(16, true)
+      if (payloadLen > MAX_PAYLOAD) {
+        this.resyncToMagic()
+        continue
+      }
+
+      const frameLen = HEADER_SIZE + payloadLen
+      while (this.rxLength < frameLen) {
+        await this.readSome(frameLen - this.rxLength)
+      }
+
+      let frame: Frame
+      try {
+        frame = decodeFrame(this.rxBuffer.subarray(0, frameLen))
+      } catch {
+        this.resyncToMagic()
+        continue
+      }
+      this.consumeRx(frameLen)
+      logUsbProtocolFrame('RX', frame)
+      return frame
     }
+  }
 
-    const frameLen = HEADER_SIZE + payloadLen
-    while (this.rxLength < frameLen) {
-      await this.readSome()
+  /** 失步自愈:从偏移 1 起找下一个 MAGIC(小端 53 41 50 45),丢弃它之前的字节;
+   * 找不到时保留末尾至多 3 字节(可能是跨读边界的半个 MAGIC)。 */
+  private resyncToMagic (): void {
+    const buf = this.rxBuffer
+    for (let i = 1; i + 4 <= this.rxLength; i++) {
+      if (buf[i] === 0x53 && buf[i + 1] === 0x41 && buf[i + 2] === 0x50 && buf[i + 3] === 0x45) {
+        this.consumeRx(i)
+        return
+      }
     }
+    const keep = Math.min(3, Math.max(0, this.rxLength - 1))
+    this.consumeRx(this.rxLength - keep)
+  }
 
-    const frameBuf = this.rxBuffer.slice(0, frameLen)
-    this.rxLength -= frameLen
+  private consumeRx (n: number): void {
+    this.rxLength -= n
     if (this.rxLength > 0) {
-      this.rxBuffer.copyWithin(0, frameLen, frameLen + this.rxLength)
+      this.rxBuffer.copyWithin(0, n, n + this.rxLength)
     }
-
-    const frame = decodeFrame(frameBuf)
-    logUsbProtocolFrame('RX', frame)
-    return frame
   }
 
   /** WebUSB 的 transfer 没有超时也无法单独取消;挂起太久时只能 reset 整个
@@ -135,7 +185,14 @@ export class UsbTransport {
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeoutP = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
-        this.device.reset().catch(() => { /* 尽力而为 */ })
+        this.device.reset().then(
+          () => {
+            // reset 成功 = 设备协议状态清零、在途传输已取消,宿主缓冲里的
+            // 残帧一并作废;不清的话下个请求会把残头当帧解析,连接就废了
+            this.rxLength = 0
+          },
+          () => { /* 尽力而为 */ },
+        )
         reject(new Error(`USB ${label} 超时(${this.timeout / 1000}s),已 reset 设备`))
       }, this.timeout)
     })
@@ -168,20 +225,42 @@ export class UsbTransport {
     }
   }
 
-  private async readSome (): Promise<void> {
-    const result = await this.withTimeout(this.device.transferIn(this.epIn, USB_REQUEST_CHUNK), 'read')
-    if (result.status !== 'ok' || !result.data) {
-      throw new Error(`USB read failed: ${result.status}`)
+  /** 读入若干字节。needed 是当前还缺的字节数,请求量按它向上取整到 IN 端点
+   * 包大小——设备只在写长度非包整数倍(短包)或帧总长整除 64(补 ZLP)时才产生
+   * 传输边界;payload 恰为 64 整数倍时流停在整包上,固定请求 16KiB 会永远
+   * 收不满(下载 4KB/8KB 文件、stdout 恰 44 字节等必卡到超时)。按需请求则
+   * URB 收满即完成,不依赖短包,与 pyhost 的读法一致。 */
+  private async readSome (needed: number): Promise<void> {
+    if (!this.pendingRead) {
+      // 上次超时遗留的 transferIn 可能仍挂在内核队列里,设备下一批数据会先
+      // 落进它;必须复用等它完成,再发一个只会两边互相偷字节、永久失步
+      const mps = this.epInPacketSize
+      const want = Math.min(USB_REQUEST_CHUNK, Math.ceil(Math.max(needed, 1) / mps) * mps)
+      const p = this.device.transferIn(this.epIn, want).then(
+        result => {
+          this.pendingRead = null
+          if (result.status !== 'ok' || !result.data) {
+            throw new Error(`USB read failed: ${result.status}`)
+          }
+          this.appendRx(new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength))
+        },
+        (error: unknown) => {
+          this.pendingRead = null
+          throw error
+        },
+      )
+      p.catch(() => { /* 超时放弃等待后无人接住 rejection 的兜底 */ })
+      this.pendingRead = p
     }
+    await this.withTimeout(this.pendingRead, 'read')
+  }
 
-    const data = new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength)
-
+  private appendRx (data: Uint8Array): void {
     if (this.rxLength + data.length > this.rxBuffer.length) {
       const newBuf = new Uint8Array(this.rxBuffer.length * 2)
       newBuf.set(this.rxBuffer.subarray(0, this.rxLength))
       this.rxBuffer = newBuf
     }
-
     this.rxBuffer.set(data, this.rxLength)
     this.rxLength += data.length
   }
