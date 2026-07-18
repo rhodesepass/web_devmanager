@@ -213,7 +213,13 @@ export class UsbResponderClient {
       if (frame.requestId !== reqId) continue
       if (frame.type === MsgType.ERROR) {
         const kv = decodeKv(frame.payload)
-        throw new Error(kv.message ?? 'unknown error')
+        const message = kv.message ?? 'unknown error'
+        // 设备端 message 文本一般不稳定,仅这条语义固定(PROTOCOL.md §7),译成用户可读提示
+        throw new Error(
+          message === 'insufficient storage: keep 5MB free'
+            ? '设备存储空间不足（需保留 5MB 空闲），请清理后重试'
+            : message,
+        )
       }
       if (frame.type !== expected) {
         throw new Error(`unexpected response type: ${frame.type}`)

@@ -5,6 +5,7 @@ import {
   type DispImgInfo,
   type DispImgTransferProgress,
 } from '@/types/dispimg'
+import { assertStorageCapacity, storageOfPath } from '@/utils/deviceStorage'
 import { isJpegName } from '@/utils/dispImgProcess'
 import { triggerBlobDownload } from '@/utils/zipMaterial'
 import { useNotifications } from './useNotifications'
@@ -140,6 +141,7 @@ export function useDispImg (client: Ref<UsbResponderClient | null>) {
     transferProgress.value = { fileName: name, bytes: 0, total: file.size, isUpload: true }
     transferLock.begin('上传扩列图', name)
     try {
+      await assertStorageCapacity(c, storageOfPath(imgPath(name)), file.size)
       await c.filePut(file, imgPath(name), (sent, total) => {
         transferProgress.value = { fileName: name, bytes: sent, total, isUpload: true }
         transferLock.update(name, sent, total)

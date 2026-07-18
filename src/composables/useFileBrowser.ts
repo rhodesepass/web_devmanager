@@ -1,6 +1,7 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import JSZip from 'jszip'
 import type { UsbResponderClient } from '@/usb'
+import { assertStorageCapacity, storageOfPath } from '@/utils/deviceStorage'
 import { useNotifications } from './useNotifications'
 import { useTransferLock } from './useTransferLock'
 
@@ -96,6 +97,7 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     uploadProgress.value = 0
     transferLock.begin('上传文件', file.name)
     try {
+      await assertStorageCapacity(client.value, storageOfPath(path), file.size)
       await client.value.filePut(file, path, (sent, total) => {
         uploadProgress.value = Math.round((sent / total) * 100)
         transferLock.update(file.name, sent, total)
@@ -123,6 +125,7 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     uploadProgress.value = 0
     transferLock.begin('上传文件夹', `${files.length} 个文件`)
     try {
+      await assertStorageCapacity(c, storageOfPath(currentPath.value), totalBytes)
       for (const [i, file] of files.entries()) {
         const rel = file.webkitRelativePath || file.name
         const label = `[${i + 1}/${files.length}] ${rel}`

@@ -13,7 +13,7 @@ import {
   sanitizeZipFilename,
   triggerBlobDownload,
 } from '@/utils/zipMaterial'
-import { formatBytes } from '@/utils/format'
+import { assertStorageCapacity } from '@/utils/deviceStorage'
 import {
   getCachedMaterialIcon,
   removeCachedMaterialIcon,
@@ -36,27 +36,6 @@ function revokeIconUrls (materials: RemoteMaterial[]) {
     if (m.info.iconUrl) {
       URL.revokeObjectURL(m.info.iconUrl)
     }
-  }
-}
-
-async function assertStorageCapacity (
-  client: UsbResponderClient,
-  storage: MaterialStorage,
-  requiredBytes: number,
-): Promise<void> {
-  const devInfo = await client.devinfo()
-  const label = MATERIAL_STORAGES[storage].displayLabel
-
-  if (storage === 'sd' && devInfo.sd_mounted !== '1') {
-    throw new Error('SD 卡未挂载，无法上传到数据盘')
-  }
-
-  const freeKey = storage === 'nand' ? 'nand_free_bytes' : 'sd_free_bytes'
-  const freeBytes = Number.parseInt(devInfo[freeKey] ?? '0', 10)
-  if (requiredBytes > freeBytes) {
-    throw new Error(
-      `${label} 存储空间不足：需要 ${formatBytes(requiredBytes)}，剩余 ${formatBytes(freeBytes)}`,
-    )
   }
 }
 
