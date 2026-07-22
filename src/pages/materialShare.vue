@@ -10,6 +10,27 @@
         title="素材预览"
       />
 
+      <v-alert
+        class="mb-4"
+        density="compact"
+        type="info"
+        variant="tonal"
+      >
+        {{ manifestVersion === 'new'
+          ? '当前素材适用于 app 3.x 版本。'
+          : '正在浏览旧版素材（适用于 3.x 之前的 app 版本）。' }}
+        <template #append>
+          <v-btn
+            :disabled="busy"
+            size="small"
+            variant="text"
+            @click="switchVersion(manifestVersion === 'new' ? 'old' : 'new')"
+          >
+            {{ manifestVersion === 'new' ? '旧版素材' : '返回 3.x 素材' }}
+          </v-btn>
+        </template>
+      </v-alert>
+
       <div
         class="d-flex flex-wrap align-center ga-3 mb-4"
         :class="{ 'sticky-search': isEmbed }"
@@ -63,6 +84,26 @@
         {{ selectionMode ? '退出选择' : '批量选择' }}
       </v-btn>
       </div>
+
+      <v-chip-group
+        v-if="availableBadges.length > 0"
+        v-model="selectedBadges"
+        class="mb-2"
+        column
+        filter
+        multiple
+      >
+        <v-chip
+          v-for="badge in availableBadges"
+          :key="badge"
+          :color="badgeChipColor(badge)"
+          size="small"
+          :value="badge"
+          variant="outlined"
+        >
+          {{ badge }}
+        </v-chip>
+      </v-chip-group>
 
       <div
         v-if="!isEmbed && selectionMode"
@@ -198,7 +239,7 @@
         type="info"
         variant="tonal"
       >
-        {{ searchQuery.trim() ? '没有匹配的素材' : '素材清单为空' }}
+        {{ hasActiveFilter ? '没有匹配的素材' : '素材清单为空' }}
       </v-alert>
     </div>
 
@@ -244,7 +285,7 @@
         type="info"
         variant="tonal"
       >
-        {{ searchQuery.trim() ? '没有匹配的素材' : '素材清单为空' }}
+        {{ hasActiveFilter ? '没有匹配的素材' : '素材清单为空' }}
       </v-alert>
     </div>
 
@@ -329,10 +370,13 @@
   import { useUsb } from '@/composables/useUsb'
   import { formatBytes } from '@/utils/format'
   import {
+    badgeChipColor,
+    collectSharedMaterialBadges,
     downloadSharedMaterialZipFile,
     fetchSharedMaterialManifest,
     filterSharedMaterials,
     navigateSharedMaterialDownload,
+    type SharedManifestVersion,
     triggerSharedMaterialLocalDownload,
   } from '@/utils/sharedMaterials'
 
@@ -363,6 +407,8 @@
 
   const allAssets = ref<SharedMaterialAsset[]>([])
   const searchQuery = ref('')
+  const manifestVersion = ref<SharedManifestVersion>('new')
+  const selectedBadges = ref<string[]>([])
   const loading = ref(false)
   const loadError = ref<string | null>(null)
   const downloading = ref(false)
@@ -386,7 +432,13 @@
   const batchProgress = ref<{ current: number, total: number, name: string } | null>(null)
 
   const filteredAssets = computed(() =>
-    filterSharedMaterials(allAssets.value, searchQuery.value),
+    filterSharedMaterials(allAssets.value, searchQuery.value, selectedBadges.value),
+  )
+
+  const availableBadges = computed(() => collectSharedMaterialBadges(allAssets.value))
+
+  const hasActiveFilter = computed(
+    () => searchQuery.value.trim().length > 0 || selectedBadges.value.length > 0,
   )
 
   const columnsPerRow = computed(() => {
@@ -531,11 +583,21 @@
     notify(`批量下载完成：成功 ${ok} / ${assets.length}`, ok === assets.length ? 'success' : 'warning')
   }
 
+  function switchVersion (version: SharedManifestVersion) {
+    if (manifestVersion.value === version || busy.value) {
+      return
+    }
+    manifestVersion.value = version
+    selectedBadges.value = []
+    selectedUuids.value = new Set()
+    void loadManifest()
+  }
+
   async function loadManifest () {
     loading.value = true
     loadError.value = null
     try {
-      allAssets.value = await fetchSharedMaterialManifest()
+      allAssets.value = await fetchSharedMaterialManifest(manifestVersion.value)
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       loadError.value = msg

@@ -37,18 +37,43 @@ export function resolveSharedMaterialUrl (
   return new URL(path.replace(/^\//, ''), base).href
 }
 
-export async function fetchSharedMaterialManifest (): Promise<SharedMaterialAsset[]> {
+export type SharedManifestVersion = 'new' | 'old'
+
+const MANIFEST_FILES: Record<SharedManifestVersion, string> = {
+  new: 'manifest_new.json',
+  old: 'manifest.json',
+}
+
+/** manifest_new 中 icon/preview 仍写作 previews/,实际文件位于 previews_new/ */
+function remapNewPreviewPath (path: string | null): string | null {
+  if (path && path.startsWith('previews/')) {
+    return `previews_new/${path.slice('previews/'.length)}`
+  }
+  return path
+}
+
+export async function fetchSharedMaterialManifest (
+  version: SharedManifestVersion = 'new',
+): Promise<SharedMaterialAsset[]> {
   const base = toAbsoluteBaseUrl(siteLinks.sharedMaterialsBase)
-  const url = new URL('manifest.json', base).href
+  const url = new URL(MANIFEST_FILES[version], base).href
   const res = await fetch(url)
   if (!res.ok) {
     throw new Error(`加载素材清单失败 (${res.status})`)
   }
   const data: unknown = await res.json()
   if (!Array.isArray(data)) {
-    throw new Error('manifest.json 格式无效')
+    throw new Error(`${MANIFEST_FILES[version]} 格式无效`)
   }
-  return data as SharedMaterialAsset[]
+  const assets = data as SharedMaterialAsset[]
+  if (version !== 'new') {
+    return assets
+  }
+  return assets.map(a => ({
+    ...a,
+    icon: remapNewPreviewPath(a.icon),
+    preview: remapNewPreviewPath(a.preview),
+  }))
 }
 
 export async function downloadSharedMaterialZipFile (
@@ -125,16 +150,32 @@ function sanitizeDownloadName (name: string): string {
 export function filterSharedMaterials (
   assets: SharedMaterialAsset[],
   query: string,
+  badges: string[] = [],
 ): SharedMaterialAsset[] {
+  let result = assets
+  if (badges.length > 0) {
+    result = result.filter(a => badges.every(b => a.badges.includes(b)))
+  }
   const q = query.trim().toLowerCase()
   if (!q) {
-    return assets
+    return result
   }
-  return assets.filter(
+  return result.filter(
     a =>
       a.name.toLowerCase().includes(q)
       || a.desc.toLowerCase().includes(q),
   )
+}
+
+/** 收集清单中出现过的所有 badge,按出现次数降序 */
+export function collectSharedMaterialBadges (assets: SharedMaterialAsset[]): string[] {
+  const counts = new Map<string, number>()
+  for (const a of assets) {
+    for (const b of a.badges) {
+      counts.set(b, (counts.get(b) ?? 0) + 1)
+    }
+  }
+  return [...counts.keys()].sort((x, y) => counts.get(y)! - counts.get(x)!)
 }
 
 export function badgeChipColor (badge: string): string | undefined {
