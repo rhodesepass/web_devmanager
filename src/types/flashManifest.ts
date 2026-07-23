@@ -1,21 +1,27 @@
-export interface FlasherInfo {
-  latestVersion: number
-  url: string
-}
+export type FlashTarget = 'nand' | 'sd'
 
+/** 一个可烧录角色对应的固件文件（含校验信息） */
 export interface ManifestFile {
   name: string
-  hash: string
-  type: string
+  sha256: string
+  size: number
+}
+
+/** 某个存储目标（nand/sd）下各角色 -> 文件名的映射 */
+export interface TargetFiles {
+  felboot: string
+  uboot: string
+  boot: string
+  rootfs: string
 }
 
 export interface ManifestEntry {
-  type: string
+  version: string
+  channel: string
   title: string
   commit: string
-  version: string
   description: string
-  minimalFlasherVersion: number
+  targets: Record<FlashTarget, TargetFiles>
   files: ManifestFile[]
 }
 
@@ -25,7 +31,10 @@ export interface MirrorEntry {
 }
 
 export interface FlashManifest {
-  flasher: FlasherInfo
+  schema: number
+  generatedAt: string
   manifest: ManifestEntry[]
   availableMirror: MirrorEntry[]
 }
+
+export type FileRole = keyof TargetFiles

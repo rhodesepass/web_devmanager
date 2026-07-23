@@ -1,18 +1,38 @@
-import type { FlashEvent } from '@/flash'
-import type { FlashManifest, ManifestEntry } from '@/types/flashManifest'
+import type { DfuPartitionAlt, FlashEvent, FlashMethod, FlashTarget } from '@/flash'
+import type { FlashManifest, FileRole, ManifestEntry, ManifestFile } from '@/types/flashManifest'
 import { computed, ref, watch } from 'vue'
-import { runFlashDfuStage, runFlashFelStage } from '@/flash'
+import {
+  DfuNotReadyError,
+  runFlashDfuPartitionNew,
+  runFlashDfuStage,
+  runFlashFelStage,
+  runFlashFelStageNew,
+} from '@/flash'
 import { isWebUsbSupported } from '@/utils/browser'
 import {
   downloadManifestFile,
   fetchFlashManifest,
-  getEntryFile,
+  fetchLegacyManifest,
+  getTargetFile,
 } from '@/utils/flashManifest'
 import { useNotifications } from './useNotifications'
 import { useTransferLock } from './useTransferLock'
 
 type Stage = 'idle' | 'fel-running' | 'awaiting-dfu' | 'dfu-running' | 'done' | 'failed'
 export type FlashFileSource = 'manifest' | 'manual'
+
+/** arkepass = 360p 原机；arkepass-p = 720p 新机 */
+export type FlashSeries = 'arkepass' | 'arkepass-p'
+
+interface SeriesConfig {
+  revisions: string[]
+  screens: string[]
+}
+
+const SERIES_CONFIG: Record<FlashSeries, SeriesConfig> = {
+  'arkepass': { revisions: ['0.2', '0.3', '0.5', '0.6'], screens: ['boe', 'hsd', 'laowu'] },
+  'arkepass-p': { revisions: ['p0.1'], screens: ['boe_035'] },
+}
 
 export function useFlash () {
   const { notify } = useNotifications()
@@ -40,8 +60,23 @@ export function useFlash () {
   const progressDone = ref(0)
   const progressTotal = ref(0)
 
-  const selectedRev = ref('0.3')
+  const series = ref<FlashSeries>('arkepass')
+  const selectedRev = ref('0.6')
   const selectedScreen = ref('hsd')
+
+  const revisionItems = computed(() => SERIES_CONFIG[series.value].revisions)
+  const screenItems = computed(() => SERIES_CONFIG[series.value].screens)
+
+  const flashMethod = ref<FlashMethod>('new')
+  const flashTarget = ref<FlashTarget>('nand')
+
+  // 新方法 gadget 无 iSerial，每次重新枚举授权都会作废，
+  // 所以三个分区各自要一次用户点击 + 授权，这里记推进到哪个分区了
+  const NEW_DFU_PARTS: DfuPartitionAlt[] = ['uboot', 'boot', 'rootfs']
+  const dfuPartIndex = ref(0)
+  const nextDfuAlt = computed<DfuPartitionAlt | null>(() =>
+    flashMethod.value === 'new' ? (NEW_DFU_PARTS[dfuPartIndex.value] ?? null) : null,
+  )
 
   const fileSource = ref<FlashFileSource>('manifest')
   const flashManifest = ref<FlashManifest | null>(null)
@@ -51,10 +86,12 @@ export function useFlash () {
   const selectedMirrorIndex = ref(0)
   const downloadingFirmware = ref(false)
 
+  const felbootFile = ref<File | null>(null)
   const ubootFile = ref<File | null>(null)
   const bootFile = ref<File | null>(null)
   const rootfsFile = ref<File | null>(null)
 
+  const felbootBytes = ref<Uint8Array | null>(null)
   const ubootBytes = ref<Uint8Array | null>(null)
   const bootBytes = ref<Uint8Array | null>(null)
   const rootfsBytes = ref<Uint8Array | null>(null)
@@ -64,6 +101,15 @@ export function useFlash () {
   const running = computed(() => stage.value === 'fel-running' || stage.value === 'dfu-running')
   const done = computed(() => stage.value === 'done')
   const awaitingDfu = computed(() => stage.value === 'awaiting-dfu')
+
+  const isNewMethod = computed(() => flashMethod.value === 'new')
+
+  /** 当前方法需要的角色列表（老方法不需要 felboot） */
+  const requiredRoles = computed<FileRole[]>(() =>
+    isNewMethod.value
+      ? ['felboot', 'uboot', 'boot', 'rootfs']
+      : ['uboot', 'boot', 'rootfs'],
+  )
 
   const selectedEntry = computed((): ManifestEntry | null => {
     if (!flashManifest.value || !selectedVersion.value) {
@@ -94,15 +140,33 @@ export function useFlash () {
     return Math.min(1, progressDone.value / progressTotal.value)
   })
 
+  function manualFileFor (role: FileRole): File | null {
+    switch (role) {
+      case 'felboot': return felbootFile.value
+      case 'uboot': return ubootFile.value
+      case 'boot': return bootFile.value
+      case 'rootfs': return rootfsFile.value
+    }
+  }
+
+  function loadedBytesFor (role: FileRole): Uint8Array | null {
+    switch (role) {
+      case 'felboot': return felbootBytes.value
+      case 'uboot': return ubootBytes.value
+      case 'boot': return bootBytes.value
+      case 'rootfs': return rootfsBytes.value
+    }
+  }
+
   const filesReady = computed(() => {
     if (fileSource.value === 'manual') {
-      return !!ubootFile.value && !!bootFile.value && !!rootfsFile.value
+      return requiredRoles.value.every(role => !!manualFileFor(role))
     }
     return !!selectedVersion.value && !!flashManifest.value
   })
 
   const imagesLoaded = computed(() => {
-    return !!ubootBytes.value && !!bootBytes.value && !!rootfsBytes.value
+    return requiredRoles.value.every(role => !!loadedBytesFor(role))
   })
 
   const canStartFlash = computed(() => {
@@ -113,6 +177,7 @@ export function useFlash () {
   })
 
   function clearLoadedBytes () {
+    felbootBytes.value = null
     ubootBytes.value = null
     bootBytes.value = null
     rootfsBytes.value = null
@@ -161,7 +226,7 @@ export function useFlash () {
       case 'done': {
         appendLog('烧录完成')
         stage.value = 'done'
-        status.value = '完成，请手动重启设备'
+        status.value = isNewMethod.value ? '完成，设备将自动重启进入系统' : '完成，请手动重启设备'
         progressLabel.value = '完成'
         progressDone.value = 1
         progressTotal.value = 1
@@ -206,7 +271,9 @@ export function useFlash () {
     clearLoadedBytes()
 
     try {
-      const data = await fetchFlashManifest(selectedRev.value, selectedScreen.value)
+      const data = isNewMethod.value
+        ? await fetchFlashManifest(selectedRev.value, selectedScreen.value)
+        : await fetchLegacyManifest(selectedRev.value, selectedScreen.value)
       flashManifest.value = data
       if (data.manifest.length > 0) {
         selectedVersion.value = data.manifest[0].version
@@ -217,6 +284,22 @@ export function useFlash () {
       manifestError.value = msg
     } finally {
       manifestLoading.value = false
+    }
+  }
+
+  const ROLE_LABEL: Record<FileRole, string> = {
+    felboot: 'FEL U-Boot',
+    uboot: 'U-Boot',
+    boot: 'Boot',
+    rootfs: 'Rootfs',
+  }
+
+  function storeBytes (role: FileRole, bytes: Uint8Array) {
+    switch (role) {
+      case 'felboot': { felbootBytes.value = bytes; break }
+      case 'uboot': { ubootBytes.value = bytes; break }
+      case 'boot': { bootBytes.value = bytes; break }
+      case 'rootfs': { rootfsBytes.value = bytes; break }
     }
   }
 
@@ -233,12 +316,14 @@ export function useFlash () {
       return false
     }
 
-    const ubootMeta = getEntryFile(entry, 'uboot')
-    const bootMeta = getEntryFile(entry, 'boot')
-    const rootfsMeta = getEntryFile(entry, 'rootfs')
-    if (!ubootMeta || !bootMeta || !rootfsMeta) {
-      reportFailure('所选版本缺少 uboot / boot / rootfs 文件信息')
-      return false
+    const tasks: Array<{ role: FileRole, meta: ManifestFile }> = []
+    for (const role of requiredRoles.value) {
+      const meta = getTargetFile(entry, flashTarget.value, role)
+      if (!meta) {
+        reportFailure(`所选版本的 ${flashTarget.value} 目标缺少 ${ROLE_LABEL[role]} 文件信息`)
+        return false
+      }
+      tasks.push({ role, meta })
     }
 
     downloadingFirmware.value = true
@@ -246,15 +331,10 @@ export function useFlash () {
     clearLoadedBytes()
     transferLock.begin('下载固件')
 
-    const tasks: Array<{ label: string, meta: typeof ubootMeta }> = [
-      { label: 'U-Boot', meta: ubootMeta },
-      { label: 'Boot', meta: bootMeta },
-      { label: 'Rootfs', meta: rootfsMeta },
-    ]
-
     try {
       for (const task of tasks) {
-        appendLog(`正在下载 ${task.label}: ${task.meta.name}...`, true)
+        const label = ROLE_LABEL[task.role]
+        appendLog(`正在下载 ${label}: ${task.meta.name}...`, true)
         const bytes = await downloadManifestFile(
           mirror,
           entry.version,
@@ -262,21 +342,15 @@ export function useFlash () {
           (loaded, total) => {
             progressDone.value = loaded
             progressTotal.value = total ?? 0
-            const detail = `${task.label}: ${task.meta.name}`
+            const detail = `${label}: ${task.meta.name}`
             if (total) {
-              status.value = `下载 ${task.label} ${Math.round(loaded / total * 100)}%`
+              status.value = `下载 ${label} ${Math.round(loaded / total * 100)}%`
             }
             syncLockProgress(detail, loaded, total ?? 0)
           },
         )
-        if (task.meta.type === 'uboot') {
-          ubootBytes.value = bytes
-        } else if (task.meta.type === 'boot') {
-          bootBytes.value = bytes
-        } else {
-          rootfsBytes.value = bytes
-        }
-        appendLog(`${task.label} 下载完成 (${(bytes.byteLength / 1024 / 1024).toFixed(2)} MiB)`)
+        storeBytes(task.role, bytes)
+        appendLog(`${label} 下载完成 (${(bytes.byteLength / 1024 / 1024).toFixed(2)} MiB)`)
       }
       return true
     } catch (error_: unknown) {
@@ -293,23 +367,22 @@ export function useFlash () {
 
   async function prepareFiles (): Promise<boolean> {
     if (fileSource.value === 'manifest') {
-      if (ubootBytes.value && bootBytes.value && rootfsBytes.value) {
+      if (imagesLoaded.value) {
         return true
       }
       return downloadManifestFirmware()
     }
 
-    if (!ubootFile.value || !bootFile.value || !rootfsFile.value) {
+    if (requiredRoles.value.some(role => !manualFileFor(role))) {
       return false
     }
     transferLock.begin('读取镜像')
     try {
-      syncLockProgress(ubootFile.value.name)
-      ubootBytes.value = await readFile(ubootFile.value)
-      syncLockProgress(bootFile.value.name)
-      bootBytes.value = await readFile(bootFile.value)
-      syncLockProgress(rootfsFile.value.name)
-      rootfsBytes.value = await readFile(rootfsFile.value)
+      for (const role of requiredRoles.value) {
+        const file = manualFileFor(role)!
+        syncLockProgress(file.name)
+        storeBytes(role, await readFile(file))
+      }
       return true
     } catch (error_: unknown) {
       const msg = error_ instanceof Error ? error_.message : String(error_)
@@ -326,24 +399,45 @@ export function useFlash () {
     if (!canStartFlash.value) {
       return Promise.resolve()
     }
-    if (!ubootBytes.value) {
-      reportFailure('U-Boot 镜像尚未加载')
-      return Promise.resolve()
-    }
     error.value = null
     logs.value = ['开始 FEL 阶段...']
     progressLabel.value = '准备'
     progressDone.value = 0
     progressTotal.value = 0
+    dfuPartIndex.value = 0
     stage.value = 'fel-running'
     transferLock.begin('烧录中', 'FEL 阶段', { overlay: false })
-    const ubootSnapshot = ubootBytes.value
 
-    return runFlashFelStage(
-      { rev: selectedRev.value, screen: selectedScreen.value },
-      { uboot: ubootSnapshot },
-      handleEvent,
-    )
+    const felStagePromise = isNewMethod.value
+      ? (() => {
+          if (!felbootBytes.value) {
+            reportFailure('FEL U-Boot 镜像尚未加载')
+            return null
+          }
+          return runFlashFelStageNew(
+            { rev: selectedRev.value, screen: selectedScreen.value },
+            flashTarget.value,
+            { felboot: felbootBytes.value },
+            handleEvent,
+          )
+        })()
+      : (() => {
+          if (!ubootBytes.value) {
+            reportFailure('U-Boot 镜像尚未加载')
+            return null
+          }
+          return runFlashFelStage(
+            { rev: selectedRev.value, screen: selectedScreen.value },
+            { uboot: ubootBytes.value },
+            handleEvent,
+          )
+        })()
+
+    if (!felStagePromise) {
+      return Promise.resolve()
+    }
+
+    return felStagePromise
       .then(() => {
         stage.value = 'awaiting-dfu'
         appendLog('FEL 阶段完成，等待 DFU 设备授权...', true)
@@ -356,33 +450,90 @@ export function useFlash () {
       })
   }
 
+  function bytesForAlt (alt: DfuPartitionAlt): Uint8Array | null {
+    switch (alt) {
+      case 'uboot': return ubootBytes.value
+      case 'boot': return bootBytes.value
+      case 'rootfs': return rootfsBytes.value
+    }
+  }
+
+  /** 回到等待点击状态（授权失效/设备未就绪时不判死，让用户重点一次） */
+  function backToAwaitingDfu (message: string) {
+    stage.value = 'awaiting-dfu'
+    appendLog(message, true)
+    transferLock.setOverlay(false)
+    syncLockProgress('等待 DFU 设备授权…', 0, 0)
+  }
+
+  async function runNewDfuPartition (): Promise<void> {
+    const index = dfuPartIndex.value
+    const alt = NEW_DFU_PARTS[index]
+    const data = bytesForAlt(alt)
+    if (!data) {
+      reportFailure(`${alt} 镜像尚未加载`)
+      return
+    }
+
+    try {
+      await runFlashDfuPartitionNew(alt, data, handleEvent)
+    } catch (error_: unknown) {
+      const msg = error_ instanceof Error ? error_.message : String(error_)
+      if (error_ instanceof DfuNotReadyError) {
+        backToAwaitingDfu(`${msg}；请等待设备就绪后再次点击烧录按钮`)
+        notify('DFU 设备尚未就绪，请稍后重试', 'warning')
+      } else {
+        reportFailure(msg)
+      }
+      return
+    }
+
+    if (index + 1 < NEW_DFU_PARTS.length) {
+      dfuPartIndex.value = index + 1
+      backToAwaitingDfu(
+        `${alt} 分区烧录完成。设备正在准备 ${NEW_DFU_PARTS[index + 1]} 分区`
+        + '（期间会重新枚举、需重新授权），请稍候数秒后点击下一个烧录按钮',
+      )
+    } else {
+      handleEvent({ type: 'done' })
+    }
+  }
+
   function continueDfuStage (): Promise<void> {
     if (stage.value !== 'awaiting-dfu') {
       return Promise.resolve()
     }
+    error.value = null
+    stage.value = 'dfu-running'
+    syncLockProgress('DFU 阶段', 0, 0)
+
+    if (isNewMethod.value) {
+      appendLog(
+        dfuPartIndex.value === 0
+          ? '开始 DFU 阶段...'
+          : `继续 DFU 阶段（${NEW_DFU_PARTS[dfuPartIndex.value]} 分区）...`,
+        true,
+      )
+      return runNewDfuPartition()
+    }
+
+    appendLog('开始 DFU 阶段...', true)
     if (!bootBytes.value || !rootfsBytes.value) {
       reportFailure('boot/rootfs 镜像尚未加载')
       return Promise.resolve()
     }
-    error.value = null
-    appendLog('开始 DFU 阶段...', true)
-    stage.value = 'dfu-running'
-    syncLockProgress('DFU 阶段', 0, 0)
-    const bootSnapshot = bootBytes.value
-    const rootfsSnapshot = rootfsBytes.value
-
     return runFlashDfuStage(
-      { boot: bootSnapshot, rootfs: rootfsSnapshot },
+      { boot: bootBytes.value, rootfs: rootfsBytes.value },
       handleEvent,
-    )
-      .catch((error_: unknown) => {
-        const msg = error_ instanceof Error ? error_.message : String(error_)
-        reportFailure(msg)
-      })
+    ).catch((error_: unknown) => {
+      const msg = error_ instanceof Error ? error_.message : String(error_)
+      reportFailure(msg)
+    })
   }
 
   function resetState () {
     stage.value = 'idle'
+    dfuPartIndex.value = 0
     error.value = null
     status.value = ''
     logs.value = []
@@ -392,16 +543,13 @@ export function useFlash () {
     transferLock.end()
   }
 
-  function setFile (type: 'uboot' | 'boot' | 'rootfs', file: File | null) {
+  function setFile (role: FileRole, file: File | null) {
     clearLoadedBytes()
-    if (type === 'uboot') {
-      ubootFile.value = file
-    }
-    if (type === 'boot') {
-      bootFile.value = file
-    }
-    if (type === 'rootfs') {
-      rootfsFile.value = file
+    switch (role) {
+      case 'felboot': { felbootFile.value = file; break }
+      case 'uboot': { ubootFile.value = file; break }
+      case 'boot': { bootFile.value = file; break }
+      case 'rootfs': { rootfsFile.value = file; break }
     }
   }
 
@@ -409,6 +557,7 @@ export function useFlash () {
     clearLoadedBytes()
     manifestError.value = null
     if (source === 'manifest') {
+      felbootFile.value = null
       ubootFile.value = null
       bootFile.value = null
       rootfsFile.value = null
@@ -419,10 +568,35 @@ export function useFlash () {
     }
   })
 
+  // 切系列后把硬件版本/屏幕重置到该系列的可选项（会连带触发下面的清单重拉）
+  watch(series, (value) => {
+    const config = SERIES_CONFIG[value]
+    if (!config.revisions.includes(selectedRev.value)) {
+      selectedRev.value = config.revisions[0]
+    }
+    if (!config.screens.includes(selectedScreen.value)) {
+      selectedScreen.value = config.screens[0]
+    }
+  })
+
+  // rev/screen 不影响清单内容，仅用于服务端统计，但保持与设备选择一致
   watch([selectedRev, selectedScreen], () => {
     if (fileSource.value === 'manifest') {
       loadManifest()
     }
+  })
+
+  // 新老方法用的清单文件不同（manifest-v3.json / manifest.json），需重新拉取
+  watch(flashMethod, () => {
+    clearLoadedBytes()
+    if (fileSource.value === 'manifest') {
+      loadManifest()
+    }
+  })
+
+  // 切换目标后已下载的镜像可能不再匹配，清空以便重新下载
+  watch(flashTarget, () => {
+    clearLoadedBytes()
   })
 
   watch(selectedVersion, () => {
@@ -449,8 +623,16 @@ export function useFlash () {
     progressLabel,
     progressDone,
     progressTotal,
+    series,
     selectedRev,
     selectedScreen,
+    revisionItems,
+    screenItems,
+    flashMethod,
+    flashTarget,
+    isNewMethod,
+    nextDfuAlt,
+    requiredRoles,
     fileSource,
     flashManifest,
     manifestLoading,
@@ -461,6 +643,7 @@ export function useFlash () {
     versionItems,
     mirrorItems,
     downloadingFirmware,
+    felbootFile,
     ubootFile,
     bootFile,
     rootfsFile,

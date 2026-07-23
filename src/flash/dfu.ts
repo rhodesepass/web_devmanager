@@ -361,9 +361,11 @@ export async function findAndClaimDfuAlt (
     //   alt 2 -> rootfs
     // It is also tolerant of the older 2-alt layout (alt 0 = boot, alt 1 = rootfs).
     const altSettings = new Set(candidates.map(c => c.alt.alternateSetting))
-    const fallbackSetting = altName === 'boot'
-      ? (altSettings.has(1) ? 1 : 0)
-      : (altSettings.has(2) ? 2 : 1)
+    const fallbackSetting = altName === 'uboot'
+      ? 0
+      : altName === 'boot'
+        ? (altSettings.has(1) ? 1 : 0)
+        : (altSettings.has(2) ? 2 : 1)
     matched = candidates.find(c => c.alt.alternateSetting === fallbackSetting)
     if (matched) {
       log?.(`DFU alt name not found, falling back to alternate setting ${fallbackSetting}`)

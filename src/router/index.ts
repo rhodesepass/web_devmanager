@@ -22,6 +22,15 @@ const router = createRouter({
       meta: { embedCapable: true },
     },
     {
+      path: '/apps',
+      component: () => import('@/pages/apps.vue'),
+    },
+    {
+      path: '/apps/share',
+      component: () => import('@/pages/appShare.vue'),
+      meta: { embedCapable: true },
+    },
+    {
       path: '/dispimg',
       component: () => import('@/pages/dispImg.vue'),
     },
@@ -32,6 +41,10 @@ const router = createRouter({
     {
       path: '/flash',
       component: () => import('@/pages/flash.vue'),
+    },
+    {
+      path: '/repro',
+      component: () => import('@/pages/reproGuide.vue'),
     },
   ],
 })

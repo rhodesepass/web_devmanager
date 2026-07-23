@@ -13,8 +13,12 @@ export const siteLinks = {
   flashBase: 'https://epflash.iccmc.cc/',
   /** 在线分享素材静态资源基址（manifest、previews 等） */
   sharedMaterialsBase: '/asset2share/',
-  /** Windows 刷机工具（exe） */
-  windowsFlasherExe: 'https://openlist.slstudio.top/%E7%99%BD%E9%93%B6%E7%9A%84%E9%80%9A%E8%A1%8C%E8%AF%81/%E5%88%B7%E6%9C%BA%E7%A8%8B%E5%BA%8Fepass_flasherV2.exe',
+  /** 应用商店静态资源基址（manifest、previews、apps 等） */
+  sharedAppsBase: '/app2share/',
+  /** USB 诊断工具 UsbTreeView（exe） */
+  usbTreeView: 'https://oplst.iccmc.cc/%E8%BD%AF%E4%BB%B6_%E5%88%B7%E6%9C%BA%E5%8C%85/%EF%BC%88USB%E8%AF%8A%E6%96%AD%E5%B7%A5%E5%85%B7%EF%BC%89UsbTreeView.exe',
+  /** Windows libusb 驱动安装包（zip，内含 drv_install.bat），本站 public/ 托管 */
+  windowsDriver: '/epass_driver.zip',
   /** Android 管理器（apk） */
   androidManagerApk: 'https://openlist.slstudio.top/%E7%99%BD%E9%93%B6%E7%9A%84%E9%80%9A%E8%A1%8C%E8%AF%81/ePass%E7%AE%A1%E7%90%86%E5%99%A8%20v1.2.apk',
   /** 素材编辑器（Windows 安装包） */

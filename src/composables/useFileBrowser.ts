@@ -17,7 +17,8 @@ export interface FileEntry {
 export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
   const { notify } = useNotifications()
   const transferLock = useTransferLock()
-  const currentPath = ref('.')
+  // 起始目录 /root:路径体系是相对设备根的,'.' 代表根,故写作 'root'
+  const currentPath = ref('root')
   const entries = ref<FileEntry[]>([])
   const loading = ref(false)
   const selected = ref<string[]>([])

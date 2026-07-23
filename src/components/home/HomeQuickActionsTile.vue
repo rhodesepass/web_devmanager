@@ -7,12 +7,12 @@
         cols="6"
       >
         <v-card
-          :to="item.path"
-          variant="tonal"
           class="quick-action pa-3 text-center"
           rounded="lg"
+          :to="item.path"
+          variant="tonal"
         >
-          <v-icon :icon="item.icon" size="28" class="mb-2" />
+          <v-icon class="mb-2" :icon="item.icon" size="28" />
           <div class="text-body-2">{{ item.title }}</div>
         </v-card>
       </v-col>
@@ -21,13 +21,16 @@
 </template>
 
 <script lang="ts" setup>
-const quickItems = [
-  { path: '/files', icon: 'mdi-folder', title: '文件' },
-  { path: '/materials', icon: 'mdi-play-box-multiple', title: '素材' },
-  { path: '/dispimg', icon: 'mdi-image-multiple', title: '扩列图' },
-  { path: '/terminal', icon: 'mdi-console', title: '终端' },
-  { path: '/flash', icon: 'mdi-chip', title: '烧录' },
-]
+  const quickItems = [
+    { path: '/files', icon: 'mdi-folder', title: '文件' },
+    { path: '/materials', icon: 'mdi-play-box-multiple', title: '素材' },
+    { path: '/apps', icon: 'mdi-apps', title: '应用' },
+    { path: '/apps/share', icon: 'mdi-storefront-outline', title: '应用库' },
+    { path: '/dispimg', icon: 'mdi-image-multiple', title: '扩列图' },
+    { path: '/terminal', icon: 'mdi-console', title: '终端' },
+    { path: '/flash', icon: 'mdi-chip', title: '烧录' },
+    { path: '/repro', icon: 'mdi-clipboard-check-outline', title: '复刻向导' },
+  ]
 </script>
 
 <style scoped>

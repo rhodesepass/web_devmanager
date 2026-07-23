@@ -76,20 +76,40 @@
             Windows 下使用刷机功能需要手动安装 libusb 驱动，素材管理功能不受影响。
           </v-alert>
 
-          <p class="text-body-2 text-medium-emphasis mb-4">
-            若您需要刷机，建议使用桌面版刷机工具，体验更稳定。
+          <p class="text-body-2 font-weight-medium mb-1">方式一：一键安装（推荐）</p>
+          <p class="text-body-2 mb-2">
+            按 <kbd>Win</kbd> + <kbd>R</kbd> 打开「运行」，粘贴下面的命令并回车，在弹出的 UAC 窗口点「是」：
           </p>
+
+          <button
+            class="platform-notice__inline platform-notice__copyable mb-4"
+            type="button"
+            @click="copyText(windowsOneLiner, '命令已复制')"
+          >
+            {{ windowsOneLiner }}
+            <v-icon icon="mdi-content-copy" size="14" />
+          </button>
+
+          <p class="text-body-2 font-weight-medium mb-1">方式二：手动安装</p>
+          <ol class="platform-notice__steps text-body-2 mb-4">
+            <li class="mb-3">下载下方驱动安装包（zip）并解压</li>
+            <li class="mb-3">
+              右键以管理员身份运行解压目录中的
+              <code class="platform-notice__inline">drv_install.bat</code>
+            </li>
+            <li>安装完成后重新插拔设备并刷新页面</li>
+          </ol>
 
           <v-btn
             block
             color="primary"
-            :href="siteLinks.windowsFlasherExe"
+            :href="siteLinks.windowsDriver"
             prepend-icon="mdi-download"
             rel="noopener noreferrer"
             target="_blank"
             variant="tonal"
           >
-            下载刷机程序 exe 版
+            下载驱动安装包
           </v-btn>
         </template>
 
@@ -114,6 +134,21 @@
           >
             下载 ePass 管理器 App
           </v-btn>
+        </template>
+
+        <template v-else-if="kind === 'ios'">
+          <v-alert
+            class="mb-4"
+            density="compact"
+            type="error"
+            variant="tonal"
+          >
+            iOS / iPadOS 不支持 WebUSB，无法在本页连接设备。
+          </v-alert>
+
+          <p class="text-body-2 text-medium-emphasis">
+            请改用电脑（Windows / Linux / macOS）上的 Chrome，或使用 Android 设备 + APP访问。
+          </p>
         </template>
       </v-card-text>
 
@@ -153,6 +188,9 @@ const emit = defineEmits<{
 
 const { notify } = useNotifications()
 
+// public/install_driver.ps1 与驱动 zip 都随本站部署;包一层 powershell -c 便于直接粘进 Win+R
+const windowsOneLiner = 'powershell -ExecutionPolicy ByPass -c "irm https://epm.iccmc.cc/install_driver.ps1 | iex"'
+
 const meta = computed(() => {
   switch (props.kind) {
     case 'linux':
@@ -165,7 +203,7 @@ const meta = computed(() => {
     case 'windows':
       return {
         title: 'Windows 用户须知',
-        subtitle: '刷机功能需要额外驱动',
+        subtitle: '刷机前请先安装 USB 驱动',
         icon: 'mdi-microsoft-windows',
         color: 'warning',
       }
@@ -175,6 +213,13 @@ const meta = computed(() => {
         subtitle: '推荐使用官方 App',
         icon: 'mdi-android',
         color: 'info',
+      }
+    case 'ios':
+      return {
+        title: 'iOS 不支持',
+        subtitle: '请使用电脑或 Android',
+        icon: 'mdi-apple',
+        color: 'error',
       }
     default:
       return {

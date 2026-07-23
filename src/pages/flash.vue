@@ -7,6 +7,25 @@
 
     <BrowserWarning v-if="!isSupported" class="mb-4" />
 
+    <v-alert
+      class="mb-4"
+      density="comfortable"
+      icon="mdi-power"
+      type="info"
+      variant="tonal"
+    >
+      <div class="text-body-2">
+        <strong>进入 FEL 模式：</strong>拔出 SD 卡，关闭板子电源，按住 FEL 按钮（从上往下第五个按钮），再按住电源键（最下面的按钮）上电。
+      </div>
+      <div class="text-body-2 mt-1">
+        如果点击授权后没有反应，请先
+        <a class="text-decoration-underline" href="#" @click.prevent="openPlatformNotice()">重新安装驱动</a>，
+        仍然不行则检查 USB 链路是否虚焊，可用
+        <a :href="siteLinks.usbTreeView" rel="noopener noreferrer" target="_blank">UsbTreeView</a>
+        观察设备是否被系统枚举。
+      </div>
+    </v-alert>
+
     <v-row>
       <v-col cols="12" lg="7">
         <v-card>
@@ -58,12 +77,24 @@
                     选择硬件版本与屏幕类型，从在线清单下载固件，或手动指定本地镜像文件。
                   </p>
 
+                  <v-select
+                    v-model="series"
+                    class="mb-1"
+                    density="compact"
+                    item-title="title"
+                    item-value="value"
+                    :items="seriesItems"
+                    label="系列"
+                    variant="outlined"
+                  />
+
                   <v-row dense>
                     <v-col cols="12" sm="6">
                       <v-select
                         v-model="selectedRev"
                         density="compact"
-                        :items="revisions"
+                        :disabled="revisionItems.length <= 1"
+                        :items="revisionItems"
                         label="硬件版本"
                         variant="outlined"
                       />
@@ -73,12 +104,62 @@
                       <v-select
                         v-model="selectedScreen"
                         density="compact"
-                        :items="screens"
+                        :disabled="screenItems.length <= 1"
+                        :items="screenItems"
                         label="屏幕类型"
                         variant="outlined"
                       />
                     </v-col>
                   </v-row>
+
+                  <v-row v-if="isNewMethod" dense>
+                    <v-col cols="12" sm="6">
+                      <v-select
+                        v-model="flashTarget"
+                        density="compact"
+                        item-title="title"
+                        item-value="value"
+                        :items="targetItems"
+                        label="启动/存储目标"
+                        variant="outlined"
+                      />
+                    </v-col>
+                  </v-row>
+
+                  <div v-if="isNewMethod" class="mb-2">
+                    <v-btn
+                      class="text-none px-1"
+                      color="medium-emphasis"
+                      prepend-icon="mdi-backup-restore"
+                      size="small"
+                      variant="text"
+                      @click="flashMethod = 'legacy'"
+                    >
+                      切换到旧版兼容模式
+                    </v-btn>
+                  </div>
+
+                  <v-alert
+                    v-else
+                    class="mb-2"
+                    density="compact"
+                    type="warning"
+                    variant="tonal"
+                  >
+                    <div class="text-body-2">
+                      已启用<strong>旧版兼容模式</strong>：用 FEL 直接擦写 SPI NAND，仅支持 NAND(系统盘)启动，不写 felboot。
+                    </div>
+                    <v-btn
+                      class="text-none px-1 mt-1"
+                      color="primary"
+                      prepend-icon="mdi-arrow-up-bold"
+                      size="small"
+                      variant="text"
+                      @click="flashMethod = 'new'"
+                    >
+                      切换回新版方法
+                    </v-btn>
+                  </v-alert>
 
                   <v-btn-toggle
                     v-model="fileSource"
@@ -163,8 +244,22 @@
 
                   <template v-else>
                     <p class="text-caption text-medium-emphasis mb-2">
-                      手动选择 U-Boot、boot、rootfs 三个镜像文件
+                      {{ isNewMethod
+                        ? '手动选择 felboot、uboot、boot、rootfs 四个镜像文件'
+                        : '手动选择 U-Boot、boot、rootfs 三个镜像文件' }}
                     </p>
+
+                    <v-file-input
+                      v-if="isNewMethod"
+                      accept="*"
+                      class="mb-2"
+                      density="compact"
+                      label="FEL U-Boot (felboot / u-boot.bin)"
+                      :model-value="felbootFile ? [felbootFile] : []"
+                      prepend-icon="mdi-chip"
+                      variant="outlined"
+                      @update:model-value="onFile('felboot', $event)"
+                    />
 
                     <v-file-input
                       accept="*"
@@ -235,6 +330,19 @@
                     />
 
                     <v-list-item
+                      prepend-icon="mdi-cog-transfer"
+                      :subtitle="isNewMethod ? '新方法（FEL 引导 U-Boot + DFU）' : '老方法（FEL 直写 SPI NAND）'"
+                      title="烧录方式"
+                    />
+
+                    <v-list-item
+                      v-if="isNewMethod"
+                      prepend-icon="mdi-harddisk-plus"
+                      :subtitle="flashTarget === 'nand' ? 'NAND 启动（系统盘）' : 'SD 卡启动（数据盘）'"
+                      title="启动/存储目标"
+                    />
+
+                    <v-list-item
                       prepend-icon="mdi-source-branch"
                       :subtitle="fileSource === 'manifest' ? '在线清单' : '本地文件'"
                       title="固件来源"
@@ -245,6 +353,13 @@
                       prepend-icon="mdi-tag"
                       :subtitle="selectedEntry.version"
                       :title="selectedEntry.title"
+                    />
+
+                    <v-list-item
+                      v-if="isNewMethod"
+                      prepend-icon="mdi-chip"
+                      :subtitle="describeImage('felboot')"
+                      title="FEL U-Boot"
                     />
 
                     <v-list-item
@@ -327,7 +442,13 @@
                   </p>
 
                   <p class="text-caption text-medium-emphasis">
-                    授权完成后，将依次写入 boot 与 rootfs 分区。两个分区共享同一次授权，无需再次确认。
+                    <template v-if="isNewMethod">
+                      将依次写入 uboot、boot、rootfs 分区。设备在分区之间会重新枚举，
+                      浏览器每次都会丢掉授权，因此<strong>每个分区都需要点一次按钮并重新授权</strong>。
+                    </template>
+                    <template v-else>
+                      授权完成后，将依次写入 boot 与 rootfs 分区。各分区共享同一次授权，无需再次确认。
+                    </template>
                   </p>
                 </v-card-text>
 
@@ -339,7 +460,7 @@
                     :loading="stage === 'dfu-running'"
                     @click="continueDfuStage"
                   >
-                    授权 DFU 并继续
+                    {{ nextDfuAlt ? `授权并烧录 ${nextDfuAlt} 分区` : '授权 DFU 并继续' }}
                   </v-btn>
                 </v-card-actions>
               </v-stepper-window-item>
@@ -352,7 +473,9 @@
                     type="success"
                     variant="tonal"
                   >
-                    DFU 写入已完成。请手动断电后重新上电启动设备。
+                    {{ isNewMethod
+                      ? 'DFU 写入已完成，设备会自动重启进入系统，无需手动断电。'
+                      : 'DFU 写入已完成。请手动断电后重新上电启动设备。' }}
                   </v-alert>
 
                   <v-alert
@@ -434,16 +557,27 @@
 </template>
 
 <script lang="ts" setup>
+  import type { FileRole } from '@/types/flashManifest'
   import { ref, watch } from 'vue'
   import BrowserWarning from '@/components/BrowserWarning.vue'
   import PageHeader from '@/components/PageHeader.vue'
   import { useFlash } from '@/composables/useFlash'
+  import { usePlatformNotice } from '@/composables/usePlatformNotice'
   import { siteLinks } from '@/config/site'
+  import { getTargetFile } from '@/utils/flashManifest'
 
   const flashBaseHost = new URL(siteLinks.flashBase).host
 
-  const revisions = ['0.2', '0.3', '0.5', '0.6']
-  const screens = ['boe', 'hsd', 'laowu']
+  const { open: openPlatformNotice } = usePlatformNotice(true)
+
+  const seriesItems = [
+    { title: 'ArkEPass（360p 机种）', value: 'arkepass' },
+    { title: 'ArkEPass-P（720p 机种）', value: 'arkepass-p' },
+  ]
+  const targetItems = [
+    { title: 'NAND 启动（系统盘）', value: 'nand' },
+    { title: 'SD 卡启动（数据盘）', value: 'sd' },
+  ]
 
   const {
     isSupported,
@@ -454,8 +588,15 @@
     error,
     logs,
     progress,
+    series,
     selectedRev,
     selectedScreen,
+    revisionItems,
+    screenItems,
+    flashMethod,
+    flashTarget,
+    isNewMethod,
+    nextDfuAlt,
     fileSource,
     manifestLoading,
     manifestError,
@@ -464,6 +605,7 @@
     selectedEntry,
     versionItems,
     mirrorItems,
+    felbootFile,
     ubootFile,
     bootFile,
     rootfsFile,
@@ -520,18 +662,22 @@
     return `${file.name} (${formatBytes(file.size)})`
   }
 
-  function describeImage (type: 'uboot' | 'boot' | 'rootfs'): string {
-    if (fileSource.value === 'manual') {
-      const file = type === 'uboot'
-        ? ubootFile.value
-        : type === 'boot'
-          ? bootFile.value
-          : rootfsFile.value
-      return describeFile(file)
+  function manualFile (role: FileRole): File | null {
+    switch (role) {
+      case 'felboot': return felbootFile.value
+      case 'uboot': return ubootFile.value
+      case 'boot': return bootFile.value
+      case 'rootfs': return rootfsFile.value
     }
-    const meta = selectedEntry.value?.files.find(f => f.type === type)
-    if (!meta) return '未选择'
-    return meta.name
+  }
+
+  function describeImage (role: FileRole): string {
+    if (fileSource.value === 'manual') {
+      return describeFile(manualFile(role))
+    }
+    if (!selectedEntry.value) return '未选择'
+    const meta = getTargetFile(selectedEntry.value, flashTarget.value, role)
+    return meta ? meta.name : '未选择'
   }
 
   async function onGoToReview () {
@@ -548,9 +694,9 @@
     step.value = 2
   }
 
-  function onFile (type: 'uboot' | 'boot' | 'rootfs', value: File | File[] | null) {
+  function onFile (role: FileRole, value: File | File[] | null) {
     const file = Array.isArray(value) ? (value[0] ?? null) : value
-    setFile(type, file)
+    setFile(role, file)
   }
 
   async function onStartFlash () {

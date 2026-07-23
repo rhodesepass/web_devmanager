@@ -1,15 +1,15 @@
 import { makeIconCache } from './iconCache'
 
-const cache = makeIconCache('devman:material-icon:')
+const cache = makeIconCache('devman:app-icon:')
 
-export function getCachedMaterialIcon (
+export function getCachedAppIcon (
   uuid: string,
   expectedSize: number,
 ): { bytes: Uint8Array, mime: string } | null {
   return cache.get(uuid, expectedSize)
 }
 
-export function setCachedMaterialIcon (
+export function setCachedAppIcon (
   uuid: string,
   size: number,
   mime: string,
@@ -18,10 +18,10 @@ export function setCachedMaterialIcon (
   cache.set(uuid, size, mime, bytes)
 }
 
-export function removeCachedMaterialIcon (uuid: string): void {
+export function removeCachedAppIcon (uuid: string): void {
   cache.remove(uuid)
 }
 
-export function clearAllMaterialIconCache (): number {
+export function clearAllAppIconCache (): number {
   return cache.clearAll()
 }
