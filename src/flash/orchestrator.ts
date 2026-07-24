@@ -1,7 +1,7 @@
 import type { ClaimedDfuInterface } from './dfu'
 import type { FlashEvent, FlashFiles, FlashSelection, FlashTarget } from './types'
 import type { OpenedUsb } from './usbFlash'
-import { DFU_PRODUCT_ID, DFU_VENDOR_ID, FEL_PRODUCT_ID, FEL_VENDOR_ID } from './constants'
+import { DFU_PRODUCT_ID, DFU_VENDOR_ID } from './constants'
 import { DDR_PAYLOAD } from './ddrPayload'
 import {
   DfuClient,
@@ -20,6 +20,7 @@ import {
   connectFelInteractive,
   getAuthorizedDevice,
   openUsbDevice,
+  reopenFel,
 } from './usbFlash'
 
 export type FlashEventHandler = (event: FlashEvent) => void
@@ -357,29 +358,6 @@ export async function runFlashDfuStage (
 // u-boot.bin 载入 0x81700000 执行。该 u-boot 起来后自身提供 DFU，
 // 依次接收 uboot / boot / rootfs 三个分区并落盘（NAND 或 SD 由 boot_type 决定）。
 // ===========================================================================
-
-/**
- * 重开 FEL 设备（不弹窗；FEL 设备没重新枚举，授权仍在），并 clearHalt
- * 清掉 bulk 端点可能残留的 STALL。用于 FEL 传输出错后的自动重试。
- */
-async function reopenFel (): Promise<OpenedUsb> {
-  const device = await getAuthorizedDevice(FEL_VENDOR_ID, FEL_PRODUCT_ID)
-  if (!device) {
-    throw new Error('FEL 设备已断开，请重新进入 FEL 模式后再试')
-  }
-  const opened = await openUsbDevice(device, { requireBulk: true, claimInterface: true })
-  try {
-    if (opened.epIn != null) {
-      await opened.device.clearHalt('in', opened.epIn)
-    }
-    if (opened.epOut != null) {
-      await opened.device.clearHalt('out', opened.epOut)
-    }
-  } catch {
-    // 部分平台对未挂起的端点 clearHalt 会报错，忽略
-  }
-  return opened
-}
 
 async function runFelStageNewBody (
   opened: OpenedUsb,

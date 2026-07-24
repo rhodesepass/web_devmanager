@@ -24,6 +24,11 @@
         <a :href="siteLinks.usbTreeView" rel="noopener noreferrer" target="_blank">UsbTreeView</a>
         观察设备是否被系统枚举。
       </div>
+      <div class="text-body-2 mt-1">
+        如果刷机仍有问题，可再尝试用
+        <a :href="siteLinks.offlineFlashTool" rel="noopener noreferrer" target="_blank">通用刷机程序</a>
+        （Windows 用包内 exe，其他平台可用 <code>uv run main.py</code>）。
+      </div>
     </v-alert>
 
     <v-row>

@@ -177,6 +177,29 @@ export async function connectDfuInteractive (): Promise<OpenedUsb> {
 }
 
 /**
+ * 重开 FEL 设备（不弹窗；FEL 设备没重新枚举，授权仍在），并 clearHalt
+ * 清掉 bulk 端点可能残留的 STALL。用于 FEL 传输出错后的自动重试。
+ */
+export async function reopenFel (): Promise<OpenedUsb> {
+  const device = await getAuthorizedDevice(FEL_VENDOR_ID, FEL_PRODUCT_ID)
+  if (!device) {
+    throw new Error('FEL 设备已断开，请重新进入 FEL 模式后再试')
+  }
+  const opened = await openUsbDevice(device, { requireBulk: true, claimInterface: true })
+  try {
+    if (opened.epIn != null) {
+      await opened.device.clearHalt('in', opened.epIn)
+    }
+    if (opened.epOut != null) {
+      await opened.device.clearHalt('out', opened.epOut)
+    }
+  } catch {
+    // 部分平台对未挂起的端点 clearHalt 会报错，忽略
+  }
+  return opened
+}
+
+/**
  * Wait for an already-authorized DFU device to (re)attach. Use this between
  * the boot/rootfs DFU stages, where the same physical device re-enumerates.
  */

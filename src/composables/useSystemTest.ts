@@ -15,6 +15,7 @@ import {
   lradcRawToUv,
   lradcReadRaw,
   probeSpiNand,
+  reopenFel,
   runDdrTest,
 } from '@/flash'
 import { isWebUsbSupported } from '@/utils/browser'
@@ -90,6 +91,18 @@ export function useSystemTest () {
 
   function setStage (key: TestStage['key'], status: StageStatus, detail: string) {
     stages.value = stages.value.map(s => s.key === key ? { ...s, status, detail } : s)
+  }
+
+  /** FEL 传输 STALL 后重开设备句柄（不弹窗），并重建依赖它的 client */
+  async function reconnectFel (): Promise<void> {
+    if (opened) {
+      await closeUsb(opened)
+      opened = null
+    }
+    await sleep(500)
+    opened = await reopenFel()
+    fel = new FelClient(opened)
+    tester = new GpioTester(fel)
   }
 
   async function connect () {
@@ -186,9 +199,25 @@ export function useSystemTest () {
       }
 
       // 3. DDR
+      // 首次进入 FEL 后第一笔大块 transferOut 偶发 STALL(与烧录页 FEL 阶段
+      // 同一问题),重开句柄 + clearHalt 后重跑即可恢复
       setStage('ddr', 'running', '上传 DDR 初始化 payload 并执行…')
       try {
-        const ddr = await runDdrTest(fel)
+        let ddr
+        for (let attempt = 1; ; attempt++) {
+          try {
+            ddr = await runDdrTest(fel!)
+            break
+          } catch (error_: unknown) {
+            const msg = error_ instanceof Error ? error_.message : String(error_)
+            if (attempt >= 3 || msg.includes('已断开')) {
+              throw error_
+            }
+            appendLog(`DDR 传输出错(${msg}),重新连接后自动重试(第 ${attempt + 1}/3 次)…`)
+            setStage('ddr', 'running', `传输出错,自动重试(第 ${attempt + 1}/3 次)…`)
+            await reconnectFel()
+          }
+        }
         const modelText = ddr.model ?? `未知型号(${ddr.sizeMb}MB)`
         if (ddr.memtestOk) {
           if (ddr.sizeMb === 64) {

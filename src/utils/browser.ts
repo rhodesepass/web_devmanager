@@ -28,7 +28,7 @@ export function isLinux (): boolean {
     && !isAndroid()
 }
 
-export type PlatformNoticeKind = 'linux' | 'windows' | 'android' | 'ios'
+export type PlatformNoticeKind = 'linux' | 'windows' | 'android' | 'ios' | 'nowebusb'
 
 export function getPlatformNoticeKind (): PlatformNoticeKind | null {
   if (isIOS()) {

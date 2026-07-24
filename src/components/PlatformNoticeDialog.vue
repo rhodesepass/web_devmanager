@@ -126,11 +126,10 @@
           <v-btn
             block
             color="primary"
-            :href="siteLinks.androidManagerApk"
+            :loading="androidDownloadLoading"
             prepend-icon="mdi-download"
-            rel="noopener noreferrer"
-            target="_blank"
             variant="tonal"
+            @click="downloadAndroidManager"
           >
             下载 ePass 管理器 App
           </v-btn>
@@ -149,6 +148,36 @@
           <p class="text-body-2 text-medium-emphasis">
             请改用电脑（Windows / Linux / macOS）上的 Chrome，或使用 Android 设备 + APP访问。
           </p>
+        </template>
+
+        <template v-else-if="kind === 'nowebusb'">
+          <v-alert
+            class="mb-4"
+            density="compact"
+            type="warning"
+            variant="tonal"
+          >
+            当前浏览器不支持 WebUSB，无法在本页连接设备或刷机。
+          </v-alert>
+
+          <p class="text-body-2 mb-3">
+            请改用 <strong>Chrome</strong>、<strong>Edge</strong> 或 <strong>Opera</strong>；
+            也可下载通用刷机程序在本地刷机（包内 Windows 用 exe，其他平台可用
+            <code class="platform-notice__inline">uv run main.py</code>）：
+            素材亦可使用MTP连接管理。
+          </p>
+
+          <v-btn
+            block
+            color="primary"
+            :href="siteLinks.offlineFlashTool"
+            prepend-icon="mdi-download"
+            rel="noopener noreferrer"
+            target="_blank"
+            variant="tonal"
+          >
+            下载通用刷机程序
+          </v-btn>
         </template>
       </v-card-text>
 
@@ -170,10 +199,11 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useNotifications } from '@/composables/useNotifications'
 import { linuxUdevRulesText } from '@/config/linux-udev'
 import { siteLinks } from '@/config/site'
+import { fetchAndroidManagerVersion } from '@/utils/androidManager'
 import type { PlatformNoticeKind } from '@/utils/browser'
 
 const props = defineProps<{
@@ -187,9 +217,24 @@ const emit = defineEmits<{
 }>()
 
 const { notify } = useNotifications()
+const androidDownloadLoading = ref(false)
 
 // public/install_driver.ps1 与驱动 zip 都随本站部署;包一层 powershell -c 便于直接粘进 Win+R
 const windowsOneLiner = 'powershell -ExecutionPolicy ByPass -c "irm https://epm.iccmc.cc/install_driver.ps1 | iex"'
+
+async function downloadAndroidManager () {
+  if (androidDownloadLoading.value) return
+  androidDownloadLoading.value = true
+  try {
+    const info = await fetchAndroidManagerVersion()
+    window.open(info.apkUrl, '_blank', 'noopener,noreferrer')
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    notify(`下载失败: ${msg}`, 'error')
+  } finally {
+    androidDownloadLoading.value = false
+  }
+}
 
 const meta = computed(() => {
   switch (props.kind) {
@@ -220,6 +265,13 @@ const meta = computed(() => {
         subtitle: '请使用电脑或 Android',
         icon: 'mdi-apple',
         color: 'error',
+      }
+    case 'nowebusb':
+      return {
+        title: '浏览器不支持 WebUSB',
+        subtitle: '可改用支持的浏览器，或下载离线刷机程序',
+        icon: 'mdi-usb-off',
+        color: 'warning',
       }
     default:
       return {
