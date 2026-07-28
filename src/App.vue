@@ -88,7 +88,7 @@
 
 <script lang="ts" setup>
   import { computed, ref } from 'vue'
-  import logo from '@/assets/logo.svg'
+  import logo from '@/assets/logo.png'
   import PlatformNoticeDialog from '@/components/PlatformNoticeDialog.vue'
   import TransferLockOverlay from '@/components/TransferLockOverlay.vue'
   import { useEmbedMode } from '@/composables/useEmbedMode'
