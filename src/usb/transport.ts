@@ -1,5 +1,5 @@
 import { encodeFrame, decodeFrame, HEADER_SIZE, MAGIC, MAX_PAYLOAD, MsgType, VERSION, logUsbProtocolFrame } from '@/protocol'
-import { USB_REQUEST_CHUNK, DEFAULT_TIMEOUT } from './constants'
+import { USB_REQUEST_CHUNK, DEFAULT_TIMEOUT, DEVICE_ZLP_UNIT } from './constants'
 import type { Frame } from '@/protocol'
 
 export type DisconnectCallback = () => void
@@ -153,6 +153,7 @@ export class UsbTransport {
         continue
       }
       this.consumeRx(frameLen)
+      this.drainDeviceZlp(frameLen)
       logUsbProtocolFrame('RX', frame)
       return frame
     }
@@ -203,25 +204,51 @@ export class UsbTransport {
     }
   }
 
+  /** 设备端一次 bulk OUT read() 只在收到短包(不足最大包)或读满 16KiB 缓冲时返回,
+   * 所以帧总长恰好是最大包整数倍时必须给它一个收尾包,否则请求石沉大海。
+   * 原先补 ZLP(零长包)收尾——这条路真机验证是通的,但它依赖 Chrome 把空 buffer
+   * 的 transferOut 真的发成零长包,而且失败被 catch 吞掉、一旦不成就是静默卡死。
+   * 改成把末尾 1 字节拆成单独一次传输:两笔传输都以短包结束,不依赖任何 ZLP 语义。
+   * 设备端 rx 是字节流缓冲(read_frame_buffered),一帧跨多次 read 本来就正常。
+   * 中间的 16KiB 整块不用拆——它与设备端 USB_RESPONDER_IO_CHUNK 等大,读满即返回。 */
   private async writeAll (data: Uint8Array): Promise<void> {
+    const splitTail = data.length > 0 && data.length % this.epOutPacketSize === 0
+    const bulkEnd = splitTail ? data.length - 1 : data.length
+
     let offset = 0
-    while (offset < data.length) {
-      const chunk = data.slice(offset, offset + USB_REQUEST_CHUNK)
+    while (offset < bulkEnd) {
+      const chunk = data.slice(offset, Math.min(offset + USB_REQUEST_CHUNK, bulkEnd))
       const result = await this.withTimeout(this.device.transferOut(this.epOut, chunk), 'write')
       if (result.status !== 'ok') {
         throw new Error(`USB write failed: ${result.status}`)
       }
       offset += result.bytesWritten
     }
-    // 帧总长为端点最大包整数倍时补零长包(ZLP)通知设备传输结束:否则设备端
-    // read() 收不到短包会一直等,请求帧挂在内核里、设备不应答。与 pyhost
-    // client.py 和设备端 write_zlp 对齐。
-    if (data.length % this.epOutPacketSize === 0) {
-      try {
-        await this.withTimeout(this.device.transferOut(this.epOut, new Uint8Array(0)), 'write-zlp')
-      } catch {
-        // ZLP 补发失败不致命,尽力而为(与 pyhost 一致)
+    if (splitTail) {
+      const result = await this.withTimeout(
+        this.device.transferOut(this.epOut, data.slice(bulkEnd)), 'write-tail',
+      )
+      if (result.status !== 'ok') {
+        throw new Error(`USB write failed: ${result.status}`)
       }
+    }
+  }
+
+  /** 设备(io_utils.c bulk_in_needs_zlp)在应答帧总长 %64==0 时会补一个零长包。
+   * 这个 ZLP 没人要:宿主是按"还缺多少字节"读的,收满就走,根本不会再读一次。
+   * 而设备那边 write(fd,"",0) 会一直阻塞到宿主把它取走——于是设备卡在 write 里
+   * 不再读 OUT,宿主的下一个请求被 UDC 一路 NAK,双方互等,连接死锁。真机实测:
+   * 应答帧 128B 后紧跟的那个请求必然超时,先读掉 ZLP 则一切正常。
+   *
+   * 这里只"挂"一次读、不等它完成:URB 一提交内核就会把 ZLP 收走、设备立刻解除
+   * 阻塞;读到的 0 字节什么也不追加,而 pendingRead 会被下一次 readSome 复用,
+   * 所以万一固件哪天不再补 ZLP,这笔读就自然变成下一帧帧头的读,不会空等。
+   *
+   * 判据用固定的 64 而不是 epInPacketSize:设备端拿不到协商速率,一律按全速/高速
+   * 的公约数 64 判定,高速(mps=512)下也是按 64 补的。 */
+  private drainDeviceZlp (frameLen: number): void {
+    if (frameLen % DEVICE_ZLP_UNIT === 0) {
+      this.ensurePendingRead(1)
     }
   }
 
@@ -231,28 +258,34 @@ export class UsbTransport {
    * 收不满(下载 4KB/8KB 文件、stdout 恰 44 字节等必卡到超时)。按需请求则
    * URB 收满即完成,不依赖短包,与 pyhost 的读法一致。 */
   private async readSome (needed: number): Promise<void> {
-    if (!this.pendingRead) {
-      // 上次超时遗留的 transferIn 可能仍挂在内核队列里,设备下一批数据会先
-      // 落进它;必须复用等它完成,再发一个只会两边互相偷字节、永久失步
-      const mps = this.epInPacketSize
-      const want = Math.min(USB_REQUEST_CHUNK, Math.ceil(Math.max(needed, 1) / mps) * mps)
-      const p = this.device.transferIn(this.epIn, want).then(
-        result => {
-          this.pendingRead = null
-          if (result.status !== 'ok' || !result.data) {
-            throw new Error(`USB read failed: ${result.status}`)
-          }
-          this.appendRx(new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength))
-        },
-        (error: unknown) => {
-          this.pendingRead = null
-          throw error
-        },
-      )
-      p.catch(() => { /* 超时放弃等待后无人接住 rejection 的兜底 */ })
-      this.pendingRead = p
+    this.ensurePendingRead(needed)
+    await this.withTimeout(this.pendingRead!, 'read')
+  }
+
+  /** 保证有一笔在途 transferIn,不等它完成。上次超时遗留的 transferIn 可能仍挂在
+   * 内核队列里,设备下一批数据会先落进它;必须复用,再发一个只会两边互相偷字节、
+   * 永久失步。 */
+  private ensurePendingRead (needed: number): void {
+    if (this.pendingRead) {
+      return
     }
-    await this.withTimeout(this.pendingRead, 'read')
+    const mps = this.epInPacketSize
+    const want = Math.min(USB_REQUEST_CHUNK, Math.ceil(Math.max(needed, 1) / mps) * mps)
+    const p = this.device.transferIn(this.epIn, want).then(
+      result => {
+        this.pendingRead = null
+        if (result.status !== 'ok' || !result.data) {
+          throw new Error(`USB read failed: ${result.status}`)
+        }
+        this.appendRx(new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength))
+      },
+      (error: unknown) => {
+        this.pendingRead = null
+        throw error
+      },
+    )
+    p.catch(() => { /* 超时放弃等待、或投机读无人 await 时兜底接住 rejection */ })
+    this.pendingRead = p
   }
 
   private appendRx (data: Uint8Array): void {

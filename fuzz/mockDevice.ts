@@ -15,6 +15,8 @@ import { crc32 } from '@/protocol/crc32'
 
 const MPS = 64
 const DEV_WRITE_CHUNK = 16 * 1024
+/** 设备端 rx_read_some 一次 read 的缓冲大小(USB_RESPONDER_IO_CHUNK) */
+const DEV_READ_CHUNK = 16 * 1024
 const MAGIC_LE = [0x53, 0x41, 0x50, 0x45]
 
 export interface Faults {
@@ -40,6 +42,13 @@ export interface Faults {
   resetWorks?: boolean
   /** 设备已断开,所有传输失败 */
   disconnected?: boolean
+  /** 宿主补的零长 OUT 包(ZLP)不生效——帧长撞上最大包整数倍时,设备端 read()
+   * 等不到收尾包,请求永远无应答 */
+  zlpLost?: boolean
+  /** 真机默认行为:设备补 IN 方向 ZLP 时 write() 阻塞,直到宿主再读一次 IN 才
+   * 返回;阻塞期间设备不读 OUT,宿主的下一个请求被一路 NAK。设为 false 可关掉
+   * 这个建模(对照用) */
+  zlpBlocksResponder?: boolean
 }
 
 interface PendingRead {
@@ -73,6 +82,9 @@ export class MockDevice {
   private packets: Uint8Array[] = []
   private pending: PendingRead[] = []
   private rx = new Uint8Array(0)
+  private zlpBlocked = false
+  private outStage: Uint8Array[] = []
+  private outStaged = 0
   private uploads = new Map<number, { path: string, parts: Uint8Array[] }>()
 
   // ---------------- USBDevice 表面 ----------------
@@ -83,7 +95,7 @@ export class MockDevice {
       ? data.slice()
       : new Uint8Array(data instanceof ArrayBuffer ? data.slice(0) : (data as ArrayBufferView).buffer.slice(0))
     await Promise.resolve()
-    this.feed(bytes)
+    this.feedOutTransfer(bytes)
     return { bytesWritten: bytes.length, status: 'ok' }
   }
 
@@ -103,6 +115,9 @@ export class MockDevice {
     this.pending = []
     this.packets = []
     this.rx = new Uint8Array(0)
+    this.outStage = []
+    this.outStaged = 0
+    this.zlpBlocked = false
     this.uploads.clear()
   }
 
@@ -133,6 +148,9 @@ export class MockDevice {
 
   private writeZlp (): void {
     this.packets.push(new Uint8Array(0))
+    if (this.faults.zlpBlocksResponder !== false) {
+      this.zlpBlocked = true
+    }
     this.pump()
   }
 
@@ -145,6 +163,8 @@ export class MockDevice {
         if (pkt.length > 0) {
           req.acc.push(pkt)
           req.accLen += pkt.length
+        } else {
+          this.zlpBlocked = false // 宿主把 ZLP 取走了,设备的 write 返回
         }
         // 短包(含 ZLP)或收满都终止本次 URB
         if (pkt.length < MPS || req.accLen >= req.length) {
@@ -159,7 +179,46 @@ export class MockDevice {
     }
   }
 
-  // ---------------- OUT 方向: 帧解析(对齐 responder.c) ----------------
+  // ---------------- OUT 方向: read() URB 语义 + 帧解析(对齐 responder.c) ----------------
+
+  /** 设备端是 read(fd, tmp, 16KiB) 阻塞读:URB 只在收到短包(含 ZLP)或读满缓冲时
+   * 才完成并把字节交给上层。宿主一次传输若正好停在满包边界上,这些字节就一直
+   * 压在内核里、上层看不到——请求"发出去了却没人应答"。以前这里直接 feed(),
+   * 等于假设设备能看见每个字节,宿主漏补收尾包的 bug 全被掩盖。 */
+  private feedOutTransfer (bytes: Uint8Array): void {
+    if (this.zlpBlocked) {
+      // 设备卡在 write(zlp) 里没在读 OUT → UDC 一路 NAK,这笔请求根本没进设备
+      this.log.push('out dropped: responder blocked on ZLP')
+      return
+    }
+    const packets: Uint8Array[] = []
+    if (bytes.length === 0) {
+      if (this.faults.zlpLost) return
+      packets.push(new Uint8Array(0)) // ZLP 自身就是收尾短包
+    } else {
+      for (let o = 0; o < bytes.length; o += MPS) packets.push(bytes.slice(o, o + MPS))
+    }
+    for (const pkt of packets) {
+      if (pkt.length > 0) {
+        this.outStage.push(pkt)
+        this.outStaged += pkt.length
+      }
+      if (pkt.length < MPS || this.outStaged >= DEV_READ_CHUNK) {
+        this.completeOutRead()
+      }
+    }
+  }
+
+  private completeOutRead (): void {
+    if (this.outStaged === 0) {
+      this.outStage = [] // 空读(残留 ZLP),设备侧吞掉重读
+      return
+    }
+    const blob = concat(this.outStage)
+    this.outStage = []
+    this.outStaged = 0
+    this.feed(blob)
+  }
 
   private feed (bytes: Uint8Array): void {
     this.rx = concat([this.rx, bytes])

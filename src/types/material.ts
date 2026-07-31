@@ -15,7 +15,17 @@ export interface MaterialInfo {
 export interface RemoteMaterial {
   info: MaterialInfo
   storage: MaterialStorage
+  /** 设备上实际目录名。目录名任意（≠uuid），删除/下载/读图标都用它拼路径 */
+  dirName: string
   listKey: string
+}
+
+/** 素材列表加载进度：先逐目录读元数据，再后台补图标 */
+export interface MaterialLoadProgress {
+  phase: 'list' | 'meta' | 'icon'
+  done: number
+  total: number
+  label: string
 }
 
 export interface TransferProgress {

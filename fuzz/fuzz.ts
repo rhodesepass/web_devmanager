@@ -140,6 +140,39 @@ async function catInBoundary (): Promise<void> {
   }
 }
 
+// ---------------- out_boundary: 请求帧长度边界(宿主→设备) ----------------
+
+/** 请求帧总长恰好是 mps 整数倍时,设备端 read() 收不到收尾短包 → 请求永远无应答。
+ * 真机(F1C200s 全速, mps=64)上就是这么随机卡死的:素材目录一多,总有某条路径
+ * 让 FILE_STAT 帧长凑成 64。这里按 1 字节步进扫过 64/128 两个边界。 */
+async function catOutBoundary (): Promise<void> {
+  const cat = 'out_boundary'
+
+  // FILE_STAT 帧长 = 24(头) + 10(kv 头 + "path") + 路径长度
+  const statFrameLen = (pathLen: number) => 34 + pathLen
+  for (let pathLen = 26; pathLen <= 100; pathLen++) {
+    const flen = statFrameLen(pathLen)
+    if (flen % 64 !== 0 && flen % 64 !== 1 && flen % 64 !== 63) continue
+    await runCase(cat, `stat_framelen=${flen}`, { zlpLost: true }, async ({ dev, client }) => {
+      const prefix = `${SCRATCH}/`
+      const path = prefix + 'a'.repeat(pathLen - prefix.length)
+      dev.files.set(path, blobData.slice(0, 3))
+      const stat = await client.fileStat(path)
+      if (stat.size !== '3') throw new Error(`size 不符: ${stat.size}`)
+    }, { expectOpOk: true })
+  }
+
+  // FILE_PUT_CHUNK 帧长 = 24 + 4 + 文件字节数;上传路径同样会撞边界
+  for (const size of [35, 36, 37, 99, 100, 101, 16_355, 16_356, 16_357]) {
+    await runCase(cat, `put_size=${size}`, { zlpLost: true }, async ({ dev, client }) => {
+      const path = `${SCRATCH}/up${size}.bin`
+      const file = new File([blobData.slice(0, size)], 'up.bin')
+      await client.filePut(file, path)
+      if (dev.files.get(path)?.length !== size) throw new Error('上传字节数不符')
+    }, { expectOpOk: true })
+  }
+}
+
 // ---------------- faults: 确定性故障注入 ----------------
 
 function garbageWithHugePlen (): Uint8Array {
@@ -335,6 +368,7 @@ async function main (): Promise<number> {
   }
 
   await run('in_boundary', catInBoundary)
+  await run('out_boundary', catOutBoundary)
   await run('faults', catFaults)
   await run('random', () => catRandom(rounds, seed))
 

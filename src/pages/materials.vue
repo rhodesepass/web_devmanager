@@ -94,6 +94,34 @@
         </div>
       </v-card>
 
+      <v-card
+        v-if="loadProgress && !transferring"
+        class="mb-4 pa-4"
+        variant="tonal"
+      >
+        <div class="d-flex align-center justify-space-between text-body-2 mb-2">
+          <span>{{ loadPhaseLabel }}</span>
+          <span v-if="loadProgress.total > 0" class="text-medium-emphasis">
+            {{ loadProgress.done }} / {{ loadProgress.total }}
+          </span>
+        </div>
+
+        <v-progress-linear
+          color="primary"
+          height="8"
+          :indeterminate="loadProgress.total === 0"
+          :model-value="loadPercent"
+          rounded
+        />
+
+        <div
+          v-if="loadProgress.label"
+          class="text-caption text-medium-emphasis mt-1 text-truncate"
+        >
+          {{ loadProgress.label }}
+        </div>
+      </v-card>
+
       <MaterialList
         :disabled="transferring"
         :items="materials"
@@ -170,6 +198,7 @@
     loading,
     transferring,
     transferProgress,
+    loadProgress,
     storageOptions,
     refresh,
     uploadZip,
@@ -181,6 +210,20 @@
     const p = transferProgress.value
     if (!p || p.total <= 0) return 0
     return Math.min(100, Math.round((p.bytes / p.total) * 100))
+  })
+
+  const loadPercent = computed(() => {
+    const p = loadProgress.value
+    if (!p || p.total <= 0) return 0
+    return Math.min(100, Math.round((p.done / p.total) * 100))
+  })
+
+  const loadPhaseLabel = computed(() => {
+    switch (loadProgress.value?.phase) {
+      case 'meta': { return '读取素材信息…' }
+      case 'icon': { return '加载图标…' }
+      default: { return '扫描素材目录…' }
+    }
   })
 
   const showUploadDialog = ref(false)

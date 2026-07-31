@@ -1,6 +1,7 @@
 import type { UsbResponderClient } from '@/usb'
 import { computed, ref, type Ref, watch } from 'vue'
 import {
+  type MaterialLoadProgress,
   MATERIAL_STORAGES,
   type MaterialStorage,
   type RemoteMaterial,
@@ -22,8 +23,8 @@ import {
 import { useNotifications } from './useNotifications'
 import { useTransferLock } from './useTransferLock'
 
-function materialDirPath (storage: MaterialStorage, uuid: string): string {
-  return `${MATERIAL_STORAGES[storage].assetsBasePath}/${uuid}`
+function materialDirPath (storage: MaterialStorage, dirName: string): string {
+  return `${MATERIAL_STORAGES[storage].assetsBasePath}/${dirName}`
 }
 
 function bytesToFile (data: Uint8Array, name: string): File {
@@ -39,15 +40,15 @@ function revokeIconUrls (materials: RemoteMaterial[]) {
   }
 }
 
-async function materialExistsOnStorage (
+async function materialDirExists (
   client: UsbResponderClient,
   storage: MaterialStorage,
-  uuid: string,
+  dirName: string,
 ): Promise<boolean> {
   const cfg = MATERIAL_STORAGES[storage]
   try {
     const listing = await client.fileList(cfg.assetsBasePath)
-    return listing.dirs.some(d => d.trim().replace(/\/$/, '') === uuid)
+    return listing.dirs.some(d => d.trim().replace(/\/$/, '') === dirName)
   } catch {
     return false
   }
@@ -70,6 +71,7 @@ export function useMaterials (
   const loading = ref(false)
   const transferring = ref(false)
   const transferProgress = ref<TransferProgress | null>(null)
+  const loadProgress = ref<MaterialLoadProgress | null>(null)
   let iconLoadGeneration = 0
 
   const storageOptions = computed(() => {
@@ -99,67 +101,69 @@ export function useMaterials (
     }
   }
 
-  async function listStorage (storage: MaterialStorage): Promise<RemoteMaterial[]> {
+  async function listStorageDirs (storage: MaterialStorage): Promise<string[]> {
     if (!client.value) {
       return []
     }
     const cfg = MATERIAL_STORAGES[storage]
-    let dirs: string[]
     try {
       const listing = await client.value.fileList(cfg.assetsBasePath)
-      dirs = listing.dirs
+      return listing.dirs
+        .map(d => d.trim().replace(/\/$/, ''))
+        .filter(d => d && !d.includes('/'))
     } catch {
       return []
     }
+  }
 
-    const result: RemoteMaterial[] = []
-    for (const raw of dirs) {
-      const folderName = raw.trim().replace(/\/$/, '')
-      if (!folderName || folderName.includes('/')) {
-        continue
-      }
-
-      const basePath = materialDirPath(storage, folderName)
-      try {
-        const configBytes = await client.value.fileGet(`${basePath}/epconfig.json`)
-        const configText = new TextDecoder().decode(configBytes)
-        const parsed = parseEpConfig(configText, folderName)
-
-        const { files } = await client.value.fileList(basePath)
-        let totalBytes = 0
-        for (const fileName of files) {
-          try {
-            const stat = await client.value.fileStat(`${basePath}/${fileName}`)
-            totalBytes += Number.parseInt(stat.size ?? '0', 10)
-          } catch {
-            // stat failure is non-fatal
-          }
-        }
-
-        let iconBytes: number | null = null
-        if (parsed.iconRelativePath) {
-          try {
-            const stat = await client.value.fileStat(`${basePath}/${parsed.iconRelativePath}`)
-            const size = Number.parseInt(stat.size ?? '0', 10)
-            if (size > 0) {
-              iconBytes = size
-            }
-          } catch {
-            // icon stat failure is non-fatal
-          }
-        }
-
-        const info = toMaterialInfo(parsed, files.length, totalBytes, null, iconBytes)
-        result.push({
-          info,
-          storage,
-          listKey: `${storage}:${info.uuid}`,
-        })
-      } catch {
-        // skip invalid material folders
-      }
+  async function loadMaterial (
+    storage: MaterialStorage,
+    dirName: string,
+  ): Promise<RemoteMaterial | null> {
+    if (!client.value) {
+      return null
     }
-    return result
+    const basePath = materialDirPath(storage, dirName)
+    try {
+      const configBytes = await client.value.fileGet(`${basePath}/epconfig.json`)
+      const configText = new TextDecoder().decode(configBytes)
+      const parsed = parseEpConfig(configText, dirName)
+
+      const { files } = await client.value.fileList(basePath)
+      let totalBytes = 0
+      for (const fileName of files) {
+        try {
+          const stat = await client.value.fileStat(`${basePath}/${fileName}`)
+          totalBytes += Number.parseInt(stat.size ?? '0', 10)
+        } catch {
+          // stat failure is non-fatal
+        }
+      }
+
+      let iconBytes: number | null = null
+      if (parsed.iconRelativePath) {
+        try {
+          const stat = await client.value.fileStat(`${basePath}/${parsed.iconRelativePath}`)
+          const size = Number.parseInt(stat.size ?? '0', 10)
+          if (size > 0) {
+            iconBytes = size
+          }
+        } catch {
+          // icon stat failure is non-fatal
+        }
+      }
+
+      const info = toMaterialInfo(parsed, files.length, totalBytes, null, iconBytes)
+      return {
+        info,
+        storage,
+        dirName,
+        listKey: `${storage}:${dirName}`,
+      }
+    } catch {
+      // skip invalid material folders
+      return null
+    }
   }
 
   function applyMaterialIcon (
@@ -190,48 +194,70 @@ export function useMaterials (
       return
     }
 
-    for (const item of materials.value) {
-      if (generation !== iconLoadGeneration || !client.value) {
-        return
-      }
-      const iconPath = item.info.iconRelativePath
-      if (!iconPath || item.info.iconUrl) {
-        continue
-      }
+    const pending = materials.value.filter(m => m.info.iconRelativePath && !m.info.iconUrl)
+    if (pending.length === 0) {
+      loadProgress.value = null
+      return
+    }
+    let done = 0
+    loadProgress.value = { phase: 'icon', done, total: pending.length, label: '加载图标…' }
 
-      const iconBytes = item.info.iconBytes
-      if (iconBytes != null && iconBytes > 0) {
-        const cached = getCachedMaterialIcon(item.info.uuid, iconBytes)
-        if (cached) {
-          const iconCopy = new Uint8Array(cached.bytes)
-          const iconUrl = URL.createObjectURL(new Blob([iconCopy], { type: cached.mime }))
-          if (applyMaterialIcon(item.listKey, iconUrl, generation)) {
-            continue
-          }
+    try {
+      for (const item of pending) {
+        if (generation !== iconLoadGeneration || !client.value) {
           return
         }
-      }
-
-      const basePath = materialDirPath(item.storage, item.info.uuid)
-      try {
-        const fetchedBytes = await c.fileGet(`${basePath}/${iconPath}`)
-        if (generation !== iconLoadGeneration) {
-          return
+        const iconPath = item.info.iconRelativePath
+        if (!iconPath || item.info.iconUrl) {
+          continue
         }
 
-        const mime = guessImageMime(iconPath)
-        const iconCopy = new Uint8Array(fetchedBytes)
-        const iconUrl = URL.createObjectURL(new Blob([iconCopy], { type: mime }))
-
-        if (!applyMaterialIcon(item.listKey, iconUrl, generation)) {
-          return
+        done += 1
+        loadProgress.value = {
+          phase: 'icon',
+          done,
+          total: pending.length,
+          label: item.info.name,
         }
 
+        const iconBytes = item.info.iconBytes
         if (iconBytes != null && iconBytes > 0) {
-          setCachedMaterialIcon(item.info.uuid, iconBytes, mime, iconCopy)
+          const cached = getCachedMaterialIcon(item.info.uuid, iconBytes)
+          if (cached) {
+            const iconCopy = new Uint8Array(cached.bytes)
+            const iconUrl = URL.createObjectURL(new Blob([iconCopy], { type: cached.mime }))
+            if (applyMaterialIcon(item.listKey, iconUrl, generation)) {
+              continue
+            }
+            return
+          }
         }
-      } catch {
-        // icon download failure is non-fatal
+
+        const basePath = materialDirPath(item.storage, item.dirName)
+        try {
+          const fetchedBytes = await c.fileGet(`${basePath}/${iconPath}`)
+          if (generation !== iconLoadGeneration) {
+            return
+          }
+
+          const mime = guessImageMime(iconPath)
+          const iconCopy = new Uint8Array(fetchedBytes)
+          const iconUrl = URL.createObjectURL(new Blob([iconCopy], { type: mime }))
+
+          if (!applyMaterialIcon(item.listKey, iconUrl, generation)) {
+            return
+          }
+
+          if (iconBytes != null && iconBytes > 0) {
+            setCachedMaterialIcon(item.info.uuid, iconBytes, mime, iconCopy)
+          }
+        } catch {
+          // icon download failure is non-fatal
+        }
+      }
+    } finally {
+      if (generation === iconLoadGeneration) {
+        loadProgress.value = null
       }
     }
   }
@@ -240,18 +266,54 @@ export function useMaterials (
     if (!client.value) {
       revokeIconUrls(materials.value)
       materials.value = []
+      loadProgress.value = null
       return
     }
     loading.value = true
     iconLoadGeneration += 1
     const generation = iconLoadGeneration
+    loadProgress.value = { phase: 'list', done: 0, total: 0, label: '扫描素材目录…' }
     try {
       revokeIconUrls(materials.value)
-      const nand = await listStorage('nand')
-      const sd = sdMounted.value ? await listStorage('sd') : []
-      materials.value = [...nand, ...sd]
+      materials.value = []
+
+      const entries: { storage: MaterialStorage, dirName: string }[] = []
+      for (const dirName of await listStorageDirs('nand')) {
+        entries.push({ storage: 'nand', dirName })
+      }
+      if (sdMounted.value) {
+        for (const dirName of await listStorageDirs('sd')) {
+          entries.push({ storage: 'sd', dirName })
+        }
+      }
+
+      // 逐个读元数据并即时上屏，慢链路下不至于长时间空列表
+      const loaded: RemoteMaterial[] = []
+      for (const [i, entry] of entries.entries()) {
+        if (generation !== iconLoadGeneration) {
+          return
+        }
+        loadProgress.value = {
+          phase: 'meta',
+          done: i,
+          total: entries.length,
+          label: entry.dirName,
+        }
+        const material = await loadMaterial(entry.storage, entry.dirName)
+        if (material) {
+          loaded.push(material)
+          materials.value = [...loaded]
+        }
+      }
+      loadProgress.value = {
+        phase: 'meta',
+        done: entries.length,
+        total: entries.length,
+        label: '',
+      }
       void loadIconsInBackground(generation)
     } catch (error: unknown) {
+      loadProgress.value = null
       const msg = error instanceof Error ? error.message : String(error)
       notify(`加载素材列表失败: ${msg}`, 'error')
     } finally {
@@ -260,13 +322,19 @@ export function useMaterials (
   }
 
   async function findExistingMaterialStorage (uuid: string): Promise<MaterialStorage | null> {
+    // 目录名不保证等于 uuid，优先查已加载列表里解析出来的真实 uuid
+    const known = materials.value.find(m => m.info.uuid === uuid)
+    if (known) {
+      return known.storage
+    }
     if (!client.value) {
       return null
     }
-    if (await materialExistsOnStorage(client.value, 'nand', uuid)) {
+    // 本站上传时目录名就是 uuid，批量上传未刷新列表时靠这条兜底
+    if (await materialDirExists(client.value, 'nand', uuid)) {
       return 'nand'
     }
-    if (sdMounted.value && await materialExistsOnStorage(client.value, 'sd', uuid)) {
+    if (sdMounted.value && await materialDirExists(client.value, 'sd', uuid)) {
       return 'sd'
     }
     return null
@@ -341,7 +409,7 @@ export function useMaterials (
     if (!client.value) {
       return
     }
-    const basePath = materialDirPath(material.storage, material.info.uuid)
+    const basePath = materialDirPath(material.storage, material.dirName)
     transferring.value = true
     transferLock.begin('下载素材')
 
@@ -419,7 +487,7 @@ export function useMaterials (
     if (!client.value) {
       return
     }
-    const path = materialDirPath(material.storage, material.info.uuid)
+    const path = materialDirPath(material.storage, material.dirName)
     try {
       await client.value.fileDelete(path)
       removeCachedMaterialIcon(material.info.uuid)
@@ -437,8 +505,10 @@ export function useMaterials (
       if (c) {
         refresh()
       } else {
+        iconLoadGeneration += 1
         revokeIconUrls(materials.value)
         materials.value = []
+        loadProgress.value = null
       }
     }, { immediate: true })
 
@@ -454,6 +524,7 @@ export function useMaterials (
     loading,
     transferring,
     transferProgress,
+    loadProgress,
     storageOptions,
     refresh,
     uploadZip,
