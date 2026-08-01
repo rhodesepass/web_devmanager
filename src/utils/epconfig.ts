@@ -8,11 +8,13 @@ export interface ParsedEpConfig {
   iconRelativePath: string | null
 }
 
+/** 与固件 PRTS_ASSET_VERSION_NUMBER 一致（a3.0-rc1+ 为 2），仅 version > 该值时拒绝 */
+const EPCONFIG_MAX_VERSION = 2
+
 export function parseEpConfig (json: string, folderName?: string): ParsedEpConfig {
   const obj = JSON.parse(json) as Record<string, unknown>
-  const version = typeof obj.version === 'number' ? obj.version : 0
-  if (version !== 1) {
-    throw new Error(`不支持的 epconfig 版本: ${version}`)
+  if (typeof obj.version !== 'number' || obj.version > EPCONFIG_MAX_VERSION) {
+    throw new Error(`不支持的 epconfig 版本: ${obj.version}`)
   }
 
   const uuid = typeof obj.uuid === 'string' ? obj.uuid.trim() : ''
@@ -26,10 +28,8 @@ export function parseEpConfig (json: string, folderName?: string): ParsedEpConfi
   const descRaw = typeof obj.description === 'string' ? obj.description.trim() : ''
   const description = descRaw || '(无描述)'
 
+  // v2 起 screen 可选，只声明素材原生分辨率，固件不再据此拒绝
   const screen = typeof obj.screen === 'string' ? obj.screen : ''
-  if (!screen) {
-    throw new Error('epconfig.json 缺少 screen')
-  }
 
   const iconRaw = typeof obj.icon === 'string' ? obj.icon.trim() : ''
   const iconRelativePath = iconRaw || null

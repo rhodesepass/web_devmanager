@@ -39,7 +39,7 @@
 
         <v-card-text class="flex-grow-1 pt-0">
           <div class="text-caption text-medium-emphasis mb-2">
-            {{ item.info.screen }}
+            {{ item.info.screen || '未标注分辨率' }}
             ·
             {{ item.info.fileCount }} 个文件
             ·
