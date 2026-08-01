@@ -24,3 +24,11 @@ export type FlashMethod = 'new' | 'legacy'
 
 /** nand = 系统盘启动(boot_type 0x01)；sd = 数据盘/SD 卡启动(boot_type 0x02) */
 export type FlashTarget = 'nand' | 'sd'
+
+/**
+ * Mostima_ 信箱 header 的 flags 字节（offset 0x09），U-Boot 侧 mstmchk 导出成
+ * ${mstm_flags}，由 mstm_prep / mstm_prep_sd 处理。不带任何位就是保数据升级。
+ */
+export const FLASH_FLAG_WIPE_USERDATA = 0x01
+/** NAND 专用：全片不跳坏块强制擦除后重扫坏块；SD 上被忽略。隐含 WIPE_USERDATA */
+export const FLASH_FLAG_NAND_SCRUB = 0x02

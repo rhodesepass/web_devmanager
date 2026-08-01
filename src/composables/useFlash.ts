@@ -3,6 +3,8 @@ import type { FlashManifest, FileRole, ManifestEntry, ManifestFile } from '@/typ
 import { computed, ref, watch } from 'vue'
 import {
   DfuNotReadyError,
+  FLASH_FLAG_NAND_SCRUB,
+  FLASH_FLAG_WIPE_USERDATA,
   runFlashDfuStage,
   runFlashDfuStageNew,
   runFlashFelStage,
@@ -69,6 +71,22 @@ export function useFlash () {
 
   const flashMethod = ref<FlashMethod>('new')
   const flashTarget = ref<FlashTarget>('nand')
+
+  // Mostima_ 信箱的 flags 字节：默认不带任何位 = 保数据升级
+  const wipeUserData = ref(false)
+  const nandScrub = ref(false)
+
+  const flashFlags = computed(() => {
+    if (!isNewMethod.value) {
+      return 0
+    }
+    let flags = wipeUserData.value ? FLASH_FLAG_WIPE_USERDATA : 0
+    // scrub 是 NAND 专用，且整片都擦了自然包含清数据
+    if (nandScrub.value && flashTarget.value === 'nand') {
+      flags |= FLASH_FLAG_NAND_SCRUB | FLASH_FLAG_WIPE_USERDATA
+    }
+    return flags
+  })
 
   const fileSource = ref<FlashFileSource>('manifest')
   const flashManifest = ref<FlashManifest | null>(null)
@@ -408,6 +426,7 @@ export function useFlash () {
           return runFlashFelStageNew(
             { rev: selectedRev.value, screen: selectedScreen.value },
             flashTarget.value,
+            flashFlags.value,
             { felboot: felbootBytes.value },
             handleEvent,
           )
@@ -600,6 +619,9 @@ export function useFlash () {
     screenItems,
     flashMethod,
     flashTarget,
+    wipeUserData,
+    nandScrub,
+    flashFlags,
     isNewMethod,
     requiredRoles,
     fileSource,

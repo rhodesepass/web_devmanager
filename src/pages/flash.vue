@@ -131,6 +131,57 @@
                     </v-col>
                   </v-row>
 
+                  <template v-if="isNewMethod">
+                    <v-checkbox
+                      v-model="wipeUserData"
+                      color="warning"
+                      density="compact"
+                      hide-details
+                      :label="flashTarget === 'nand'
+                        ? '不保留系统盘数据（数据盘数据不受影响）'
+                        : '清除 SD 数据分区（不影响共享分区）'"
+                    />
+
+                    <v-checkbox
+                      v-if="flashTarget === 'nand'"
+                      v-model="nandScrub"
+                      color="error"
+                      density="compact"
+                      hide-details
+                      label="全片强制擦除并重扫坏块（含 u-boot / bootenv）"
+                    />
+
+                    <v-alert
+                      v-if="nandScrub && flashTarget === 'nand'"
+                      class="mt-2 mb-1"
+                      density="compact"
+                      type="error"
+                      variant="tonal"
+                    >
+                      <div class="text-body-2">
+                        全片擦除会抹掉出厂坏块标记，之后按实际擦除结果重建坏块表，同时<strong>包含清除用户数据</strong>，耗时明显更长。
+                      </div>
+                      <div class="text-body-2 mt-1">
+                        这一步连 u-boot 和 bootenv 一起擦掉——随后的 DFU 会重写它们，但<strong>中途断电只能靠 FEL 救回</strong>。
+                        只在<strong>怀疑坏块表有误，而且愿意无视坏块、承担系统不稳定风险</strong>的情况下使用。
+                      </div>
+                    </v-alert>
+
+                    <v-alert
+                      v-else-if="wipeUserData"
+                      class="mt-2 mb-1"
+                      density="compact"
+                      type="warning"
+                      variant="tonal"
+                    >
+                      <div class="text-body-2">
+                        {{ flashTarget === 'nand'
+                          ? '不保留系统盘数据：系统盘上的素材、App、扩列图等会被清空且无法恢复；数据盘（SD 卡）数据不受影响。'
+                          : 'SD 上的数据分区会被清空（下次启动自动重建文件系统），共享分区不受影响。' }}
+                      </div>
+                    </v-alert>
+                  </template>
+
                   <div v-if="isNewMethod" class="mb-2">
                     <v-btn
                       class="text-none px-1"
@@ -348,6 +399,19 @@
                     />
 
                     <v-list-item
+                      v-if="isNewMethod"
+                      prepend-icon="mdi-database-alert"
+                      :subtitle="flashFlags === 0
+                        ? '保留用户数据（仅重写系统）'
+                        : (nandScrub && flashTarget === 'nand'
+                          ? '全片强制擦除 + 重扫坏块（不保留系统盘数据）'
+                          : (flashTarget === 'nand'
+                            ? '不保留系统盘数据，数据盘数据不受影响'
+                            : '清除 SD 数据分区'))"
+                      title="数据处理"
+                    />
+
+                    <v-list-item
                       prepend-icon="mdi-source-branch"
                       :subtitle="fileSource === 'manifest' ? '在线清单' : '本地文件'"
                       title="固件来源"
@@ -397,7 +461,28 @@
                   </v-alert>
 
                   <v-alert
-                    v-if="isNewMethod"
+                    v-if="isNewMethod && flashFlags !== 0"
+                    class="mb-3"
+                    density="compact"
+                    :type="nandScrub && flashTarget === 'nand' ? 'error' : 'warning'"
+                    variant="tonal"
+                  >
+                    <div class="text-body-2">
+                      <strong>本次会清除数据：</strong>已勾选
+                      {{ nandScrub && flashTarget === 'nand'
+                        ? '全片强制擦除并重扫坏块（不保留系统盘数据）'
+                        : (flashTarget === 'nand'
+                          ? '不保留系统盘数据（数据盘数据不受影响）'
+                          : '清除 SD 数据分区') }}，
+                      flags=0x{{ flashFlags.toString(16).padStart(2, '0') }}。
+                    </div>
+                    <div class="text-body-2 mt-1">
+                      清掉的数据<strong>无法恢复</strong>，请确认已经备份。
+                    </div>
+                  </v-alert>
+
+                  <v-alert
+                    v-else-if="isNewMethod"
                     class="mb-3"
                     density="compact"
                     type="warning"
@@ -607,8 +692,8 @@
     { title: 'ArkEPass-P（720p 机种）', value: 'arkepass-p' },
   ]
   const targetItems = [
-    { title: 'NAND 启动（系统盘）', value: 'nand' },
-    { title: 'SD 卡启动（数据盘）', value: 'sd' },
+    { title: '内置 NAND 启动', value: 'nand' },
+    { title: '外置 SD 卡启动', value: 'sd' },
   ]
 
   const {
@@ -627,6 +712,9 @@
     screenItems,
     flashMethod,
     flashTarget,
+    wipeUserData,
+    nandScrub,
+    flashFlags,
     isNewMethod,
     fileSource,
     manifestLoading,

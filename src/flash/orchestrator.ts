@@ -2,6 +2,7 @@ import type { ClaimedDfuInterface } from './dfu'
 import type { FlashEvent, FlashFiles, FlashSelection, FlashTarget } from './types'
 import type { OpenedUsb } from './usbFlash'
 import { DFU_PRODUCT_ID, DFU_VENDOR_ID } from './constants'
+import { FLASH_FLAG_NAND_SCRUB, FLASH_FLAG_WIPE_USERDATA } from './types'
 import { DDR_PAYLOAD } from './ddrPayload'
 import {
   DfuClient,
@@ -43,14 +44,20 @@ function buildBootEnv (rev: string, screen: string): Uint8Array {
 }
 
 /**
- * 构造 flash.py 里 make_bootinfo 写的 .bootinfo.txt：
- * "Mostima_" + boot_type + 3×0x00 + <u32 LE> len(env) + env
+ * 构造 flash.py 里 make_bootinfo 写的 .bootinfo.txt（Mostima_ 信箱 header）：
+ *   0x00 magic "Mostima_" / 0x08 boot_type / 0x09 flags / 0x0a 2B padding
+ *   0x0c u32 LE env 长度（含结尾 NUL）/ 0x10 env 文本
  */
-function buildBootInfo (selection: FlashSelection, bootType: number): Uint8Array {
+function buildBootInfo (
+  selection: FlashSelection,
+  bootType: number,
+  flags: number,
+): Uint8Array {
   const env = buildBootEnv(selection.rev, selection.screen)
   const out = new Uint8Array(8 + 4 + 4 + env.length)
   out.set(new TextEncoder().encode('Mostima_'), 0)
   out[8] = bootType
+  out[9] = flags & 0xff
   new DataView(out.buffer).setUint32(12, env.length, true)
   out.set(env, 16)
   return out
@@ -363,6 +370,7 @@ async function runFelStageNewBody (
   opened: OpenedUsb,
   selection: FlashSelection,
   target: FlashTarget,
+  flags: number,
   files: Pick<FlashFiles, 'felboot'>,
   onEvent: FlashEventHandler,
 ): Promise<void> {
@@ -385,12 +393,20 @@ async function runFelStageNewBody (
 
   onEvent({ type: 'step', title: '写入引导信息' })
   const bootType = target === 'nand' ? 0x01 : 0x02
-  await fel.write(DRAM_BOOTINFO_ADDR, buildBootInfo(selection, bootType))
+  // SD 流程只认 WIPE_USERDATA，scrub 是 NAND 专用（对齐 flash.py 的 flash_sd）
+  const effectiveFlags = target === 'nand' ? flags : (flags & FLASH_FLAG_WIPE_USERDATA)
+  await fel.write(DRAM_BOOTINFO_ADDR, buildBootInfo(selection, bootType, effectiveFlags))
   onEvent({
     type: 'log',
     message: `引导目标：${target === 'nand' ? 'NAND(系统盘)' : 'SD(数据盘)'}，`
-      + `device_rev=${selection.rev} screen=${selection.screen}`,
+      + `device_rev=${selection.rev} screen=${selection.screen}`
+      + `，flags=0x${effectiveFlags.toString(16).padStart(2, '0')}`,
   })
+  if (effectiveFlags & FLASH_FLAG_NAND_SCRUB) {
+    onEvent({ type: 'log', message: '已选择全片强制擦除并重扫坏块，该步骤耗时较长，中途请勿断电' })
+  } else if (effectiveFlags & FLASH_FLAG_WIPE_USERDATA) {
+    onEvent({ type: 'log', message: '已选择清除用户数据分区' })
+  }
 
   onEvent({ type: 'step', title: '载入 U-Boot 到内存' })
   await felWriteWithProgress(fel, DRAM_UBOOT_ADDR, files.felboot, onEvent)
@@ -412,6 +428,7 @@ const FEL_STAGE_ATTEMPTS = 3
 export async function runFlashFelStageNew (
   selection: FlashSelection,
   target: FlashTarget,
+  flags: number,
   files: Pick<FlashFiles, 'felboot'>,
   onEvent: FlashEventHandler,
 ): Promise<void> {
@@ -427,7 +444,7 @@ export async function runFlashFelStageNew (
   try {
     for (let attempt = 1; ; attempt++) {
       try {
-        await runFelStageNewBody(opened, selection, target, files, onEvent)
+        await runFelStageNewBody(opened, selection, target, flags, files, onEvent)
         break
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error)
