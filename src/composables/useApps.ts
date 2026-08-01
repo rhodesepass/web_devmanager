@@ -277,6 +277,7 @@ export function useApps (
     transferring.value = true
     transferProgress.value = { fileName: '解压 zip…', bytes: 0, total: 1, isUpload: true }
     transferLock.begin('上传 App', '解压 zip…')
+    let needRefresh = false
 
     try {
       const extracted = await extractAppFromZip(file)
@@ -334,9 +335,7 @@ export function useApps (
           : `已上传 App: ${extracted.name}`,
         'success',
       )
-      if (!options.skipReload) {
-        await refresh()
-      }
+      needRefresh = !options.skipReload
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       notify(`上传失败: ${msg}`, 'error')
@@ -345,6 +344,12 @@ export function useApps (
       transferring.value = false
       transferProgress.value = null
       transferLock.end()
+    }
+
+    // refresh 要逐个重读设备上所有 App 的元数据，放在锁里会让"已上传"提示弹出后
+    // 遮罩仍停在 100% 不动，看着像卡死
+    if (needRefresh) {
+      await refresh()
     }
   }
 

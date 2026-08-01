@@ -246,6 +246,11 @@ export class DfuClient {
     await this.controlOut(DFU_ABORT, 0, null)
   }
 
+  /** wValue = wTimeout（ms），设备据此决定多久后自行断开 */
+  async detach (timeoutMs = 1000): Promise<void> {
+    await this.controlOut(DFU_DETACH, timeoutMs & 0xff_ff, null)
+  }
+
   resetTransaction (): void {
     this.transaction = 0
   }
@@ -390,6 +395,34 @@ export async function findAndClaimDfuAlt (
     interfaceNumber: ifaceNumber,
     alternateSetting: altSetting,
     interfaceName: matched.resolvedName,
+  }
+}
+
+/**
+ * 发 DFU_DETACH 让设备退出 DFU（新版 u-boot 写完所有分区后不再自行重启，
+ * 要靠这条命令收尾）。设备收到后立刻断开甚至复位，控制传输的状态阶段多半
+ * 收不到应答——传输报错一律当成功，只记日志。
+ *
+ * class/interface 请求要求接口处于 claim 状态，而写完一个分区后我们会
+ * releaseInterface，所以这里按需重新 claim。
+ */
+export async function detachDfuDevice (
+  device: USBDevice,
+  interfaceNumber: number,
+  timeoutMs = 1000,
+  log?: DfuLogger,
+): Promise<void> {
+  try {
+    const iface = device.configuration?.interfaces
+      .find(i => i.interfaceNumber === interfaceNumber)
+    if (iface && !iface.claimed) {
+      await device.claimInterface(interfaceNumber)
+    }
+    await new DfuClient(device, interfaceNumber).detach(timeoutMs)
+    log?.('DFU_DETACH 已发送')
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    log?.(`DFU_DETACH 未收到应答（${message}），设备通常已断开，视为正常`)
   }
 }
 

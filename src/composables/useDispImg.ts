@@ -140,6 +140,7 @@ export function useDispImg (client: Ref<UsbResponderClient | null>) {
     transferring.value = true
     transferProgress.value = { fileName: name, bytes: 0, total: file.size, isUpload: true }
     transferLock.begin('上传扩列图', name)
+    let needRefresh = false
     try {
       await assertStorageCapacity(c, storageOfPath(imgPath(name)), file.size)
       await c.filePut(file, imgPath(name), (sent, total) => {
@@ -147,7 +148,7 @@ export function useDispImg (client: Ref<UsbResponderClient | null>) {
         transferLock.update(name, sent, total)
       })
       notify('已上传扩列图', 'success')
-      await refresh()
+      needRefresh = true
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       notify(`上传失败: ${msg}`, 'error')
@@ -156,6 +157,11 @@ export function useDispImg (client: Ref<UsbResponderClient | null>) {
       transferring.value = false
       transferProgress.value = null
       transferLock.end()
+    }
+
+    // refresh 会重扫列表并拉预览，留在锁里会让成功提示弹出后遮罩还停在 100%
+    if (needRefresh) {
+      await refresh()
     }
   }
 

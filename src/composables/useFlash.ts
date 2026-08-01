@@ -1,10 +1,10 @@
-import type { DfuPartitionAlt, FlashEvent, FlashMethod, FlashTarget } from '@/flash'
+import type { FlashEvent, FlashMethod, FlashTarget } from '@/flash'
 import type { FlashManifest, FileRole, ManifestEntry, ManifestFile } from '@/types/flashManifest'
 import { computed, ref, watch } from 'vue'
 import {
   DfuNotReadyError,
-  runFlashDfuPartitionNew,
   runFlashDfuStage,
+  runFlashDfuStageNew,
   runFlashFelStage,
   runFlashFelStageNew,
 } from '@/flash'
@@ -69,14 +69,6 @@ export function useFlash () {
 
   const flashMethod = ref<FlashMethod>('new')
   const flashTarget = ref<FlashTarget>('nand')
-
-  // 新方法 gadget 无 iSerial，每次重新枚举授权都会作废，
-  // 所以三个分区各自要一次用户点击 + 授权，这里记推进到哪个分区了
-  const NEW_DFU_PARTS: DfuPartitionAlt[] = ['uboot', 'boot', 'rootfs']
-  const dfuPartIndex = ref(0)
-  const nextDfuAlt = computed<DfuPartitionAlt | null>(() =>
-    flashMethod.value === 'new' ? (NEW_DFU_PARTS[dfuPartIndex.value] ?? null) : null,
-  )
 
   const fileSource = ref<FlashFileSource>('manifest')
   const flashManifest = ref<FlashManifest | null>(null)
@@ -404,7 +396,6 @@ export function useFlash () {
     progressLabel.value = '准备'
     progressDone.value = 0
     progressTotal.value = 0
-    dfuPartIndex.value = 0
     stage.value = 'fel-running'
     transferLock.begin('烧录中', 'FEL 阶段', { overlay: false })
 
@@ -450,14 +441,6 @@ export function useFlash () {
       })
   }
 
-  function bytesForAlt (alt: DfuPartitionAlt): Uint8Array | null {
-    switch (alt) {
-      case 'uboot': return ubootBytes.value
-      case 'boot': return bootBytes.value
-      case 'rootfs': return rootfsBytes.value
-    }
-  }
-
   /** 回到等待点击状态（授权失效/设备未就绪时不判死，让用户重点一次） */
   function backToAwaitingDfu (message: string) {
     stage.value = 'awaiting-dfu'
@@ -466,17 +449,21 @@ export function useFlash () {
     syncLockProgress('等待 DFU 设备授权…', 0, 0)
   }
 
-  async function runNewDfuPartition (): Promise<void> {
-    const index = dfuPartIndex.value
-    const alt = NEW_DFU_PARTS[index]
-    const data = bytesForAlt(alt)
-    if (!data) {
-      reportFailure(`${alt} 镜像尚未加载`)
+  async function runNewDfuStage (): Promise<void> {
+    if (!ubootBytes.value || !bootBytes.value || !rootfsBytes.value) {
+      reportFailure('uboot/boot/rootfs 镜像尚未加载')
       return
     }
 
     try {
-      await runFlashDfuPartitionNew(alt, data, handleEvent)
+      await runFlashDfuStageNew(
+        {
+          uboot: ubootBytes.value,
+          boot: bootBytes.value,
+          rootfs: rootfsBytes.value,
+        },
+        handleEvent,
+      )
     } catch (error_: unknown) {
       const msg = error_ instanceof Error ? error_.message : String(error_)
       if (error_ instanceof DfuNotReadyError) {
@@ -485,17 +472,6 @@ export function useFlash () {
       } else {
         reportFailure(msg)
       }
-      return
-    }
-
-    if (index + 1 < NEW_DFU_PARTS.length) {
-      dfuPartIndex.value = index + 1
-      backToAwaitingDfu(
-        `${alt} 分区烧录完成。设备正在准备 ${NEW_DFU_PARTS[index + 1]} 分区`
-        + '（期间会重新枚举、需重新授权），请稍候数秒后点击下一个烧录按钮',
-      )
-    } else {
-      handleEvent({ type: 'done' })
     }
   }
 
@@ -508,13 +484,8 @@ export function useFlash () {
     syncLockProgress('DFU 阶段', 0, 0)
 
     if (isNewMethod.value) {
-      appendLog(
-        dfuPartIndex.value === 0
-          ? '开始 DFU 阶段...'
-          : `继续 DFU 阶段（${NEW_DFU_PARTS[dfuPartIndex.value]} 分区）...`,
-        true,
-      )
-      return runNewDfuPartition()
+      appendLog('开始 DFU 阶段...', true)
+      return runNewDfuStage()
     }
 
     appendLog('开始 DFU 阶段...', true)
@@ -533,7 +504,6 @@ export function useFlash () {
 
   function resetState () {
     stage.value = 'idle'
-    dfuPartIndex.value = 0
     error.value = null
     status.value = ''
     logs.value = []
@@ -631,7 +601,6 @@ export function useFlash () {
     flashMethod,
     flashTarget,
     isNewMethod,
-    nextDfuAlt,
     requiredRoles,
     fileSource,
     flashManifest,

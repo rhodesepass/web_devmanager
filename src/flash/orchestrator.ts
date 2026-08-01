@@ -5,13 +5,14 @@ import { DFU_PRODUCT_ID, DFU_VENDOR_ID } from './constants'
 import { DDR_PAYLOAD } from './ddrPayload'
 import {
   DfuClient,
+  detachDfuDevice,
   downloadDfuImage,
   findAndClaimDfuAlt,
   listDfuAlts,
   releaseDfuInterface,
 } from './dfu'
 import { F1c100sChip } from './f1c100s'
-import { FelClient } from './fel'
+import { FelClient, recoverFelClient } from './fel'
 import { SpiNand } from './spiNand'
 import {
   awaitDfuAuthorized,
@@ -20,7 +21,6 @@ import {
   connectFelInteractive,
   getAuthorizedDevice,
   openUsbDevice,
-  reopenFel,
 } from './usbFlash'
 
 export type FlashEventHandler = (event: FlashEvent) => void
@@ -405,9 +405,9 @@ const FEL_STAGE_ATTEMPTS = 3
  * 新方法 FEL 阶段：DDR 初始化 -> 写引导信息 -> 载入并执行 u-boot。
  * 必须在用户手势内同步调用（会弹 FEL 授权窗）。返回后设备会自行进入 DFU。
  *
- * 首次进入 FEL 后第一笔大块 transferOut 偶发 STALL，而设备本身仍留在
- * FEL 模式——close/reopen + clearHalt 后从头重跑一遍即可恢复，故整个
- * 阶段自动重试（等价于用户手点第二次）。
+ * 首次进入 FEL 后第一笔大块 transferOut 偶发出错，而设备本身仍留在
+ * FEL 模式——USB 端口复位（recoverFelClient）后从头重跑一遍即可恢复，
+ * 故整个阶段自动重试（等价于用户手点第二次）。
  */
 export async function runFlashFelStageNew (
   selection: FlashSelection,
@@ -436,11 +436,10 @@ export async function runFlashFelStageNew (
         }
         onEvent({
           type: 'log',
-          message: `FEL 传输出错（${msg}），重新连接后自动重试（第 ${attempt + 1}/${FEL_STAGE_ATTEMPTS} 次）...`,
+          message: `FEL 传输出错（${msg}），复位设备后自动重试（第 ${attempt + 1}/${FEL_STAGE_ATTEMPTS} 次）...`,
         })
-        await closeUsb(opened)
-        await sleep(500)
-        opened = await reopenFel()
+        const recovered = await recoverFelClient(opened)
+        opened = recovered.opened
       }
     }
   } finally {
@@ -455,16 +454,20 @@ export async function runFlashFelStageNew (
 
 export type DfuPartitionAlt = 'uboot' | 'boot' | 'rootfs'
 
+const NEW_DFU_PARTITIONS: DfuPartitionAlt[] = ['uboot', 'boot', 'rootfs']
+
 /**
- * 新方法 DFU 阶段：单个分区的烧录。gadget 无 iSerial，每次重新枚举后
- * Chrome 都会丢掉授权，因此每个分区都必须在一次新的用户手势内调用本
- * 函数（内部按需弹授权窗）。写完不发 done——由调用方决定还有没有下一个
- * 分区。连接/claim 阶段的失败以 DfuNotReadyError 抛出，调用方应回到
- * 等待点击状态让用户稍后重试。
+ * 新方法 DFU 阶段：一次授权写完 uboot / boot / rootfs。设备在分区之间不再
+ * 重新枚举，所以授权全程有效，只需一次用户手势（本函数内部按需弹授权窗，
+ * 必须在手势内同步调用）。
+ *
+ * 三个分区写完后设备不会自己退出 DFU，要显式发 DFU_DETACH 告诉它收尾。
+ *
+ * 连接/claim 阶段的失败以 DfuNotReadyError 抛出（u-boot 可能还没起来），
+ * 调用方应回到等待点击状态让用户稍后重试。
  */
-export async function runFlashDfuPartitionNew (
-  alt: DfuPartitionAlt,
-  data: Uint8Array,
+export async function runFlashDfuStageNew (
+  files: Pick<FlashFiles, 'uboot' | 'boot' | 'rootfs'>,
   onEvent: FlashEventHandler,
 ): Promise<void> {
   const log = (message: string) => onEvent({ type: 'log', message })
@@ -478,17 +481,30 @@ export async function runFlashDfuPartitionNew (
     throw new DfuNotReadyError(`DFU 授权失败：${msg}（请确认设备已进入 DFU 模式）`)
   }
 
-  if (alt === 'uboot') {
-    const alts = await listDfuAlts(initial)
-    log(`DFU 共 ${alts.length} 个 alt: ${alts.map(a =>
-      `${a.alternateSetting}=${a.interfaceName ?? '<none>'}`,
-    ).join(', ')}`)
-  }
+  const alts = await listDfuAlts(initial)
+  log(`DFU 共 ${alts.length} 个 alt: ${alts.map(a =>
+    `${a.alternateSetting}=${a.interfaceName ?? '<none>'}`,
+  ).join(', ')}`)
 
-  const { opened, claim } = await claimDfuWithRetry(initial, alt, log)
+  let opened = initial
+  let lastInterface: number | null = null
   try {
-    await dfuWriteClaimed(opened, claim, `烧录 ${alt} 分区`, data, onEvent, log)
+    for (const alt of NEW_DFU_PARTITIONS) {
+      const claimed = await claimDfuWithRetry(opened, alt, log)
+      opened = claimed.opened
+      lastInterface = claimed.claim.interfaceNumber
+      await dfuWriteClaimed(
+        opened, claimed.claim, `烧录 ${alt} 分区`, files[alt], onEvent, log,
+      )
+    }
+
+    if (lastInterface != null) {
+      onEvent({ type: 'step', title: '通知设备退出 DFU' })
+      await detachDfuDevice(opened.device, lastInterface, 1000, log)
+    }
   } finally {
     await closeUsb(opened, false)
   }
+
+  onEvent({ type: 'done' })
 }

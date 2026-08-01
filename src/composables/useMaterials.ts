@@ -351,6 +351,7 @@ export function useMaterials (
     transferring.value = true
     transferProgress.value = { fileName: '解压 zip…', bytes: 0, total: 1, isUpload: true }
     transferLock.begin('上传素材', '解压 zip…')
+    let needRefresh = false
 
     try {
       const extracted = await extractMaterialFromZip(file)
@@ -391,9 +392,7 @@ export function useMaterials (
         await reloadAssetsOnDevice()
       }
       notify(`已上传素材: ${extracted.name}`, 'success')
-      if (!options.skipReload) {
-        await refresh()
-      }
+      needRefresh = !options.skipReload
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       notify(`上传失败: ${msg}`, 'error')
@@ -402,6 +401,12 @@ export function useMaterials (
       transferring.value = false
       transferProgress.value = null
       transferLock.end()
+    }
+
+    // refresh 要逐个重读设备上所有素材的元数据，放在锁里会让"已上传"提示弹出后
+    // 遮罩仍停在 100% 不动，看着像卡死
+    if (needRefresh) {
+      await refresh()
     }
   }
 

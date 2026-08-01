@@ -97,6 +97,7 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     uploading.value = true
     uploadProgress.value = 0
     transferLock.begin('上传文件', file.name)
+    let needRefresh = false
     try {
       await assertStorageCapacity(client.value, storageOfPath(path), file.size)
       await client.value.filePut(file, path, (sent, total) => {
@@ -104,13 +105,18 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
         transferLock.update(file.name, sent, total)
       })
       notify(`已上传: ${file.name}`, 'success')
-      await refresh()
+      needRefresh = true
     } catch (e: any) {
       notify(`上传失败: ${e.message}`, 'error')
     } finally {
       uploading.value = false
       uploadProgress.value = 0
       transferLock.end()
+    }
+
+    // 目录重列走 USB，留在锁里会让成功提示弹出后遮罩还停在 100%
+    if (needRefresh) {
+      await refresh()
     }
   }
 
@@ -125,6 +131,7 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     uploading.value = true
     uploadProgress.value = 0
     transferLock.begin('上传文件夹', `${files.length} 个文件`)
+    let needRefresh = false
     try {
       await assertStorageCapacity(c, storageOfPath(currentPath.value), totalBytes)
       for (const [i, file] of files.entries()) {
@@ -138,13 +145,17 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
         sentTotal += file.size
       }
       notify(`已上传文件夹：${files.length} 个文件`, 'success')
-      await refresh()
+      needRefresh = true
     } catch (e: any) {
       notify(`上传文件夹失败: ${e.message}`, 'error')
     } finally {
       uploading.value = false
       uploadProgress.value = 0
       transferLock.end()
+    }
+
+    if (needRefresh) {
+      await refresh()
     }
   }
 

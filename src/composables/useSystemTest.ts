@@ -15,7 +15,7 @@ import {
   lradcRawToUv,
   lradcReadRaw,
   probeSpiNand,
-  reopenFel,
+  recoverFelClient,
   runDdrTest,
 } from '@/flash'
 import { isWebUsbSupported } from '@/utils/browser'
@@ -93,15 +93,11 @@ export function useSystemTest () {
     stages.value = stages.value.map(s => s.key === key ? { ...s, status, detail } : s)
   }
 
-  /** FEL 传输 STALL 后重开设备句柄（不弹窗），并重建依赖它的 client */
+  /** FEL 传输出错后复位设备并重建依赖它的 client（不弹窗） */
   async function reconnectFel (): Promise<void> {
-    if (opened) {
-      await closeUsb(opened)
-      opened = null
-    }
-    await sleep(500)
-    opened = await reopenFel()
-    fel = new FelClient(opened)
+    const recovered = await recoverFelClient(opened)
+    opened = recovered.opened
+    fel = recovered.fel
     tester = new GpioTester(fel)
   }
 
@@ -199,8 +195,8 @@ export function useSystemTest () {
       }
 
       // 3. DDR
-      // 首次进入 FEL 后第一笔大块 transferOut 偶发 STALL(与烧录页 FEL 阶段
-      // 同一问题),重开句柄 + clearHalt 后重跑即可恢复
+      // 首次进入 FEL 后第一笔大块 transferOut 偶发出错(与烧录页 FEL 阶段
+      // 同一问题),USB 端口复位后重跑即可恢复
       setStage('ddr', 'running', '上传 DDR 初始化 payload 并执行…')
       try {
         let ddr
@@ -213,8 +209,8 @@ export function useSystemTest () {
             if (attempt >= 3 || msg.includes('已断开')) {
               throw error_
             }
-            appendLog(`DDR 传输出错(${msg}),重新连接后自动重试(第 ${attempt + 1}/3 次)…`)
-            setStage('ddr', 'running', `传输出错,自动重试(第 ${attempt + 1}/3 次)…`)
+            appendLog(`DDR 传输出错(${msg}),复位设备后自动重试(第 ${attempt + 1}/3 次)…`)
+            setStage('ddr', 'running', `传输出错,复位设备后重试(第 ${attempt + 1}/3 次)…`)
             await reconnectFel()
           }
         }

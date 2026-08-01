@@ -200,6 +200,26 @@ export async function reopenFel (): Promise<OpenedUsb> {
 }
 
 /**
+ * 传输出错后复位 FEL 设备：先对旧句柄做 USB 端口复位（这是唯一能让 BROM
+ * 那台协议状态机回到初始状态的手段，等价于拔插一次线），再重开。
+ * reset 后 claim 会失效，所以一律 close 再走 reopenFel。
+ */
+export async function resetFelDevice (opened: OpenedUsb | null): Promise<OpenedUsb> {
+  if (opened) {
+    try {
+      if (opened.device.opened) {
+        await opened.device.reset()
+      }
+    } catch {
+      // 平台/驱动不支持 reset 时忽略，后面的 clearHalt 至少能清 STALL
+    }
+    await closeUsb(opened)
+  }
+  await sleep(500)
+  return reopenFel()
+}
+
+/**
  * Wait for an already-authorized DFU device to (re)attach. Use this between
  * the boot/rootfs DFU stages, where the same physical device re-enumerates.
  */

@@ -397,6 +397,33 @@
                   </v-alert>
 
                   <v-alert
+                    v-if="isNewMethod"
+                    class="mb-3"
+                    density="compact"
+                    type="warning"
+                    variant="tonal"
+                  >
+                    <template v-if="flashTarget === 'nand'">
+                      <div class="text-body-2">
+                        <strong>关于用户数据：</strong>新版固件把系统与数据分开存放，烧录只重写系统部分（uboot / boot / rootfs），
+                        素材、App、扩列图等数据理论上不受影响。
+                      </div>
+                      <div class="text-body-2 mt-1">
+                        但仍<strong>强烈建议先备份</strong>：数据分区若因掉电、坏块等原因无法挂载，设备会在启动时自动重建它（等同清空）。
+                      </div>
+                    </template>
+                    <template v-else>
+                      <div class="text-body-2">
+                        <strong>关于用户数据：</strong>烧录到 SD 卡会重写 SD 的分区表。若卡上是旧版布局，数据分区与共享分区的位置会发生变化，
+                        原有内容将无法读回。
+                      </div>
+                      <div class="text-body-2 mt-1">
+                        请<strong>务必先备份 SD 卡内的数据</strong>再继续。
+                      </div>
+                    </template>
+                  </v-alert>
+
+                  <v-alert
                     density="compact"
                     type="info"
                     variant="tonal"
@@ -448,8 +475,8 @@
 
                   <p class="text-caption text-medium-emphasis">
                     <template v-if="isNewMethod">
-                      将依次写入 uboot、boot、rootfs 分区。设备在分区之间会重新枚举，
-                      浏览器每次都会丢掉授权，因此<strong>每个分区都需要点一次按钮并重新授权</strong>。
+                      授权完成后，将依次写入 uboot、boot、rootfs 分区。三个分区共享同一次授权，
+                      写完后会自动通知设备退出 DFU，无需再次确认。
                     </template>
                     <template v-else>
                       授权完成后，将依次写入 boot 与 rootfs 分区。各分区共享同一次授权，无需再次确认。
@@ -465,7 +492,7 @@
                     :loading="stage === 'dfu-running'"
                     @click="continueDfuStage"
                   >
-                    {{ nextDfuAlt ? `授权并烧录 ${nextDfuAlt} 分区` : '授权 DFU 并继续' }}
+                    授权 DFU 并继续
                   </v-btn>
                 </v-card-actions>
               </v-stepper-window-item>
@@ -479,7 +506,7 @@
                     variant="tonal"
                   >
                     {{ isNewMethod
-                      ? 'DFU 写入已完成，设备会自动重启进入系统，无需手动断电。'
+                      ? 'DFU 写入已完成，设备会自动启动新系统，无需手动断电。若首次启动较慢属正常（数据分区可能正在初始化）。'
                       : 'DFU 写入已完成。请手动断电后重新上电启动设备。' }}
                   </v-alert>
 
@@ -601,7 +628,6 @@
     flashMethod,
     flashTarget,
     isNewMethod,
-    nextDfuAlt,
     fileSource,
     manifestLoading,
     manifestError,
