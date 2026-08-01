@@ -27,6 +27,15 @@
     </v-btn>
 
     <v-btn
+      prepend-icon="mdi-eye"
+      variant="text"
+      :disabled="!isPreviewableSelected"
+      @click="$emit('preview')"
+    >
+      预览
+    </v-btn>
+
+    <v-btn
       :prepend-icon="isDirSelected ? 'mdi-folder-download' : 'mdi-download'"
       variant="text"
       :disabled="selected.length !== 1"
@@ -73,7 +82,7 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
-import type { FileEntry } from '@/composables/useFileBrowser'
+import { type FileEntry, isPreviewable } from '@/composables/useFileBrowser'
 
 const props = defineProps<{
   currentPath: string
@@ -88,6 +97,7 @@ defineEmits<{
   refresh: []
   upload: []
   uploadFolder: []
+  preview: []
   download: []
   delete: []
   rename: []
@@ -98,5 +108,11 @@ const isDirSelected = computed(() => {
   if (props.selected.length !== 1) return false
   const entry = props.items.find(e => e.name === props.selected[0])
   return entry?.isDir ?? false
+})
+
+const isPreviewableSelected = computed(() => {
+  if (props.selected.length !== 1) return false
+  const entry = props.items.find(e => e.name === props.selected[0])
+  return entry ? isPreviewable(entry) : false
 })
 </script>

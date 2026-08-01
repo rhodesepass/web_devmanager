@@ -1,4 +1,4 @@
-import { ref, computed, watch, type Ref } from 'vue'
+import { ref, computed, getCurrentScope, onScopeDispose, watch, type Ref } from 'vue'
 import JSZip from 'jszip'
 import type { UsbResponderClient } from '@/usb'
 import { assertStorageCapacity, storageOfPath } from '@/utils/deviceStorage'
@@ -14,6 +14,48 @@ export interface FileEntry {
   owner?: string
 }
 
+export interface FilePreview {
+  name: string
+  kind: 'text' | 'image'
+  text?: string
+  truncated?: boolean
+  imageUrl?: string
+}
+
+const TEXT_EXTS = new Set([
+  'txt', 'log', 'json', 'md', 'ini', 'conf', 'cfg',
+  'xml', 'yml', 'yaml', 'csv', 'sh',
+])
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'])
+
+const TEXT_PREVIEW_LIMIT = 512 * 1024
+const IMAGE_PREVIEW_LIMIT = 8 * 1024 * 1024
+// 超长文本整个塞进 DOM 会卡渲染，截断显示
+const TEXT_DISPLAY_LIMIT = 256 * 1024
+
+function extOf (name: string): string {
+  const idx = name.lastIndexOf('.')
+  return idx < 0 ? '' : name.slice(idx + 1).toLowerCase()
+}
+
+function imageMime (name: string): string {
+  switch (extOf(name)) {
+    case 'png': { return 'image/png' }
+    case 'jpg':
+    case 'jpeg': { return 'image/jpeg' }
+    case 'gif': { return 'image/gif' }
+    case 'webp': { return 'image/webp' }
+    case 'bmp': { return 'image/bmp' }
+    default: { return 'application/octet-stream' }
+  }
+}
+
+export function isPreviewable (entry: FileEntry): boolean {
+  if (entry.isDir) return false
+  const ext = extOf(entry.name)
+  return TEXT_EXTS.has(ext) || IMAGE_EXTS.has(ext)
+}
+
 export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
   const { notify } = useNotifications()
   const transferLock = useTransferLock()
@@ -24,6 +66,8 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
   const selected = ref<string[]>([])
   const uploadProgress = ref(0)
   const uploading = ref(false)
+  const preview = ref<FilePreview | null>(null)
+  let disposed = false
 
   async function refresh () {
     if (!client.value) return
@@ -36,6 +80,7 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
       ]
       // enrich with stat
       for (const entry of list) {
+        if (disposed) return
         try {
           const path = currentPath.value === '.'
             ? entry.name
@@ -231,6 +276,48 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     }
   }
 
+  async function previewFile (entry: FileEntry) {
+    const c = client.value
+    if (!c || entry.isDir) return
+    const isImage = IMAGE_EXTS.has(extOf(entry.name))
+    const limit = isImage ? IMAGE_PREVIEW_LIMIT : TEXT_PREVIEW_LIMIT
+    // 协议不支持部分读取，超限的文件只能整个拉回来，干脆拒绝
+    if ((entry.size ?? 0) > limit) {
+      notify(`文件过大（${Math.round((entry.size ?? 0) / 1024)} KB），请下载后查看`, 'warning')
+      return
+    }
+    const path = currentPath.value === '.'
+      ? entry.name
+      : `${currentPath.value}/${entry.name}`
+    transferLock.begin('预览文件', entry.name)
+    try {
+      const data = await c.fileGet(path, (got, total) => {
+        transferLock.update(entry.name, got, total)
+      })
+      closePreview()
+      if (isImage) {
+        const copy = new Uint8Array(data)
+        const imageUrl = URL.createObjectURL(new Blob([copy], { type: imageMime(entry.name) }))
+        preview.value = { name: entry.name, kind: 'image', imageUrl }
+      } else {
+        const truncated = data.byteLength > TEXT_DISPLAY_LIMIT
+        const text = new TextDecoder().decode(data.subarray(0, TEXT_DISPLAY_LIMIT))
+        preview.value = { name: entry.name, kind: 'text', text, truncated }
+      }
+    } catch (e: any) {
+      notify(`预览失败: ${e.message}`, 'error')
+    } finally {
+      transferLock.end()
+    }
+  }
+
+  function closePreview () {
+    if (preview.value?.imageUrl) {
+      URL.revokeObjectURL(preview.value.imageUrl)
+    }
+    preview.value = null
+  }
+
   async function deleteEntry (name: string) {
     if (!client.value) return
     const path = currentPath.value === '.'
@@ -284,6 +371,14 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     if (client.value) refresh()
   })
 
+  // 大目录下 stat 循环可能还卡在 await USB 上，卸载后让它自行退出，别继续抢 client mutex
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      disposed = true
+      closePreview()
+    })
+  }
+
   return {
     currentPath,
     entries,
@@ -292,6 +387,7 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     breadcrumbs,
     uploadProgress,
     uploading,
+    preview,
     navigate,
     goUp,
     refresh,
@@ -299,6 +395,8 @@ export function useFileBrowser (client: Ref<UsbResponderClient | null>) {
     uploadFolder,
     download,
     downloadFolder,
+    previewFile,
+    closePreview,
     deleteEntry,
     renameEntry,
     createDirectory,

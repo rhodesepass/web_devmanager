@@ -32,6 +32,7 @@
         @refresh="refresh"
         @upload="showUpload = true"
         @upload-folder="onUploadFolderClick"
+        @preview="onPreview"
         @download="onDownload"
         @delete="onDelete"
         @rename="showRename = true"
@@ -52,7 +53,10 @@
         :selected="selected"
         @update:selected="selected = $event"
         @navigate="onNavigate"
+        @preview="previewFile"
       />
+
+      <FilePreviewDialog :preview="preview" @close="closePreview" />
 
       <UploadDialog
         v-model="showUpload"
@@ -91,6 +95,7 @@ import { useUsb } from '@/composables/useUsb'
 import { useFileBrowser } from '@/composables/useFileBrowser'
 import FileList from '@/components/FileList.vue'
 import FileActions from '@/components/FileActions.vue'
+import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
 import UploadDialog from '@/components/UploadDialog.vue'
 import RenameDialog from '@/components/RenameDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -113,6 +118,9 @@ const {
   uploadFolder,
   download,
   downloadFolder,
+  preview,
+  previewFile,
+  closePreview,
   deleteEntry,
   renameEntry,
   createDirectory,
@@ -133,6 +141,12 @@ async function onUpload (files: File[]) {
     await upload(file)
   }
   showUpload.value = false
+}
+
+function onPreview () {
+  if (selected.value.length !== 1) return
+  const entry = entries.value.find(e => e.name === selected.value[0])
+  if (entry) previewFile(entry)
 }
 
 function onDownload () {

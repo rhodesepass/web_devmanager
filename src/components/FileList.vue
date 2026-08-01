@@ -43,7 +43,7 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
-import type { FileEntry } from '@/composables/useFileBrowser'
+import { type FileEntry, isPreviewable } from '@/composables/useFileBrowser'
 import { formatBytes, formatPerm } from '@/utils/format'
 
 const props = defineProps<{
@@ -55,6 +55,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:selected': [value: string[]]
   navigate: [path: string]
+  preview: [entry: FileEntry]
 }>()
 
 const selectedNames = computed(() => props.selected)
@@ -69,6 +70,8 @@ const headers = [
 function onRowDblClick (_event: MouseEvent, { item }: { item: FileEntry }) {
   if (item.isDir) {
     emit('navigate', item.name)
+  } else if (isPreviewable(item)) {
+    emit('preview', item)
   }
 }
 </script>
