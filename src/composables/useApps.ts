@@ -1,5 +1,5 @@
 import type { UsbResponderClient } from '@/usb'
-import { computed, ref, type Ref, watch } from 'vue'
+import { computed, effectScope, ref, watch } from 'vue'
 import {
   APP_STORAGES,
   type AppStorage,
@@ -21,6 +21,7 @@ import {
 import { extractAppFromZip } from '@/utils/zipApp'
 import { useNotifications } from './useNotifications'
 import { useTransferLock } from './useTransferLock'
+import { useUsb } from './useUsb'
 
 function appDirPath (storage: AppStorage, dirName: string): string {
   return `${APP_STORAGES[storage].appsBasePath}/${dirName}`
@@ -39,33 +40,35 @@ function revokeIconUrls (apps: RemoteApp[]) {
   }
 }
 
-export interface UseAppsOptions {
-  /** 连接设备后是否自动拉取设备 App 列表，默认 true */
-  autoRefresh?: boolean
+// 设备 App 列表挂在模块上而非组件闭包里：缓存边界是"一次 USB 连接"，
+// 同一次连接内来回切页面直接复用，不再重扫。
+const { client, devInfo } = useUsb()
+const { notify } = useNotifications()
+const transferLock = useTransferLock()
+
+const sdMounted = computed(() => devInfo.value?.sd_mounted === '1')
+const apps = ref<RemoteApp[]>([])
+const loading = ref(false)
+const transferring = ref(false)
+const transferProgress = ref<TransferProgress | null>(null)
+let iconLoadGeneration = 0
+
+/** 当前缓存对应哪个 client 实例；与 client.value 不一致即视为缓存失效 */
+let cachedClient: UsbResponderClient | null = null
+
+const storageOptions = computed(() => {
+  const opts = [APP_STORAGES.nand]
+  if (sdMounted.value) {
+    opts.push(APP_STORAGES.sd)
+  }
+  return opts
+})
+
+function invalidate () {
+  cachedClient = null
 }
 
-export function useApps (
-  client: Ref<UsbResponderClient | null>,
-  sdMounted: Ref<boolean>,
-  options: UseAppsOptions = {},
-) {
-  const autoRefresh = options.autoRefresh !== false
-  const { notify } = useNotifications()
-  const transferLock = useTransferLock()
-  const apps = ref<RemoteApp[]>([])
-  const loading = ref(false)
-  const transferring = ref(false)
-  const transferProgress = ref<TransferProgress | null>(null)
-  let iconLoadGeneration = 0
-
-  const storageOptions = computed(() => {
-    const opts = [APP_STORAGES.nand]
-    if (sdMounted.value) {
-      opts.push(APP_STORAGES.sd)
-    }
-    return opts
-  })
-
+export function useApps () {
   async function reloadAppsOnDevice () {
     if (!client.value) {
       return
@@ -235,8 +238,16 @@ export function useApps (
     }
   }
 
+  /** 缓存命中就什么都不做；只有首次进入或换了设备才真的去扫 */
+  function ensureLoaded () {
+    if (client.value && cachedClient !== client.value) {
+      void refresh()
+    }
+  }
+
   async function refresh () {
     if (!client.value) {
+      invalidate()
       revokeIconUrls(apps.value)
       apps.value = []
       return
@@ -253,8 +264,10 @@ export function useApps (
       if (skipped.length > 0) {
         notify(`有 ${skipped.length} 个 App 无法识别：${skipped.join('；')}`, 'warning')
       }
+      cachedClient = client.value
       void loadIconsInBackground(generation)
     } catch (error: unknown) {
+      invalidate()
       const msg = error instanceof Error ? error.message : String(error)
       notify(`加载 App 列表失败: ${msg}`, 'error')
     } finally {
@@ -336,6 +349,10 @@ export function useApps (
         'success',
       )
       needRefresh = !options.skipReload
+      if (options.skipReload) {
+        // 批量上传由调用方收尾，这里只标记缓存脏了
+        invalidate()
+      }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       notify(`上传失败: ${msg}`, 'error')
@@ -441,28 +458,32 @@ export function useApps (
       removeCachedAppIcon(app.info.uuid)
       await reloadAppsOnDevice()
       notify(`已删除 App: ${app.info.name}`, 'success')
-      await refresh()
+      removeFromList(app)
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       notify(`删除失败: ${msg}`, 'error')
     }
   }
 
-  if (autoRefresh) {
-    watch(client, c => {
-      if (c) {
-        refresh()
-      } else {
-        revokeIconUrls(apps.value)
-        apps.value = []
-      }
-    }, { immediate: true })
+  function removeFromList (app: RemoteApp) {
+    const idx = apps.value.findIndex(a => a.listKey === app.listKey)
+    if (idx < 0) {
+      return
+    }
+    const iconUrl = apps.value[idx].info.iconUrl
+    if (iconUrl) {
+      URL.revokeObjectURL(iconUrl)
+    }
+    apps.value = apps.value.filter((_, i) => i !== idx)
+  }
 
-    watch(sdMounted, () => {
-      if (client.value) {
-        refresh()
-      }
-    })
+  /**
+   * 页面挂载期间跟随连接状态自动加载。缓存命中时 ensureLoaded 不发任何请求，
+   * 所以来回切页面是零成本的；watch 绑在组件作用域上，离开页面即停。
+   */
+  function bindAutoLoad () {
+    ensureLoaded()
+    watch([client, sdMounted], () => ensureLoaded())
   }
 
   return {
@@ -471,7 +492,10 @@ export function useApps (
     transferring,
     transferProgress,
     storageOptions,
+    bindAutoLoad,
+    ensureLoaded,
     refresh,
+    invalidate,
     findExistingApp,
     uploadZip,
     reloadApps: reloadAppsOnDevice,
@@ -479,6 +503,19 @@ export function useApps (
     deleteApp,
   }
 }
+
+// 连接会话切换即作废缓存。detached scope 保证这两个 watch 不会被首个调用方的组件作用域收走。
+effectScope(true).run(() => {
+  watch(client, () => {
+    iconLoadGeneration += 1
+    invalidate()
+    revokeIconUrls(apps.value)
+    apps.value = []
+  })
+
+  // SD 插拔改变可见 App 范围，只作废缓存，等页面自己决定要不要重扫
+  watch(sdMounted, invalidate)
+})
 
 function guessImageMime (path: string): string {
   const ext = path.split('.').pop()?.toLowerCase() ?? ''

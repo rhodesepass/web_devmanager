@@ -196,7 +196,7 @@
 
 <script lang="ts" setup>
   import type { AppStorage, SharedAppEntry, SharedAppInstallState } from '@/types/app'
-  import { computed, onMounted, ref, toRef } from 'vue'
+  import { computed, onMounted, ref } from 'vue'
   import PageHeader from '@/components/PageHeader.vue'
   import SharedAppCard from '@/components/SharedAppCard.vue'
   import { useApps } from '@/composables/useApps'
@@ -217,17 +217,18 @@
   const { isEmbed } = useEmbedMode()
   const { notify } = useNotifications()
   const transferLock = useTransferLock()
-  const { connected, client, devInfo } = useUsb()
-
-  const sdMounted = computed(() => devInfo.value?.sd_mounted === '1')
+  const { connected } = useUsb()
 
   const {
     apps,
     transferring,
     transferProgress,
     storageOptions,
+    bindAutoLoad,
     uploadZip,
-  } = useApps(toRef(client), sdMounted)
+  } = useApps()
+
+  bindAutoLoad()
 
   const allEntries = ref<SharedAppEntry[]>([])
   const searchQuery = ref('')

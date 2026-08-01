@@ -358,7 +358,7 @@
 
 <script lang="ts" setup>
   import type { MaterialStorage, SharedMaterialAsset } from '@/types/material'
-  import { computed, onMounted, ref, toRef } from 'vue'
+  import { computed, onMounted, ref } from 'vue'
   import { useRouter } from 'vue-router'
   import { useDisplay } from 'vuetify'
   import PageHeader from '@/components/PageHeader.vue'
@@ -393,9 +393,7 @@
   const { isEmbed } = useEmbedMode()
   const { notify } = useNotifications()
   const transferLock = useTransferLock()
-  const { connected, client, devInfo } = useUsb()
-
-  const sdMounted = computed(() => devInfo.value?.sd_mounted === '1')
+  const { connected } = useUsb()
 
   const {
     transferring,
@@ -403,7 +401,7 @@
     storageOptions,
     uploadZip,
     reloadAssets,
-  } = useMaterials(toRef(client), sdMounted, { autoRefresh: false })
+  } = useMaterials()
 
   const allAssets = ref<SharedMaterialAsset[]>([])
   const searchQuery = ref('')

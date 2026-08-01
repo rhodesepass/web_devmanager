@@ -1,5 +1,5 @@
 import type { UsbResponderClient } from '@/usb'
-import { computed, ref, type Ref, watch } from 'vue'
+import { computed, effectScope, ref, watch } from 'vue'
 import {
   type MaterialLoadProgress,
   MATERIAL_STORAGES,
@@ -22,6 +22,7 @@ import {
 } from '@/utils/materialIconCache'
 import { useNotifications } from './useNotifications'
 import { useTransferLock } from './useTransferLock'
+import { useUsb } from './useUsb'
 
 function materialDirPath (storage: MaterialStorage, dirName: string): string {
   return `${MATERIAL_STORAGES[storage].assetsBasePath}/${dirName}`
@@ -54,34 +55,36 @@ async function materialDirExists (
   }
 }
 
-export interface UseMaterialsOptions {
-  /** 连接设备后是否自动拉取设备素材列表，默认 true */
-  autoRefresh?: boolean
+// 设备素材列表挂在模块上而非组件闭包里：缓存边界是"一次 USB 连接"，
+// 同一次连接内来回切页面直接复用，不再逐个目录重扫。
+const { client, devInfo } = useUsb()
+const { notify } = useNotifications()
+const transferLock = useTransferLock()
+
+const sdMounted = computed(() => devInfo.value?.sd_mounted === '1')
+const materials = ref<RemoteMaterial[]>([])
+const loading = ref(false)
+const transferring = ref(false)
+const transferProgress = ref<TransferProgress | null>(null)
+const loadProgress = ref<MaterialLoadProgress | null>(null)
+let iconLoadGeneration = 0
+
+/** 当前缓存对应哪个 client 实例；与 client.value 不一致即视为缓存失效 */
+let cachedClient: UsbResponderClient | null = null
+
+const storageOptions = computed(() => {
+  const opts = [MATERIAL_STORAGES.nand]
+  if (sdMounted.value) {
+    opts.push(MATERIAL_STORAGES.sd)
+  }
+  return opts
+})
+
+function invalidate () {
+  cachedClient = null
 }
 
-export function useMaterials (
-  client: Ref<UsbResponderClient | null>,
-  sdMounted: Ref<boolean>,
-  options: UseMaterialsOptions = {},
-) {
-  const autoRefresh = options.autoRefresh !== false
-  const { notify } = useNotifications()
-  const transferLock = useTransferLock()
-  const materials = ref<RemoteMaterial[]>([])
-  const loading = ref(false)
-  const transferring = ref(false)
-  const transferProgress = ref<TransferProgress | null>(null)
-  const loadProgress = ref<MaterialLoadProgress | null>(null)
-  let iconLoadGeneration = 0
-
-  const storageOptions = computed(() => {
-    const opts = [MATERIAL_STORAGES.nand]
-    if (sdMounted.value) {
-      opts.push(MATERIAL_STORAGES.sd)
-    }
-    return opts
-  })
-
+export function useMaterials () {
   async function reloadAssetsOnDevice () {
     if (!client.value) {
       return
@@ -262,8 +265,16 @@ export function useMaterials (
     }
   }
 
+  /** 缓存命中就什么都不做；只有首次进入或换了设备才真的去扫 */
+  function ensureLoaded () {
+    if (client.value && cachedClient !== client.value) {
+      void refresh()
+    }
+  }
+
   async function refresh () {
     if (!client.value) {
+      invalidate()
       revokeIconUrls(materials.value)
       materials.value = []
       loadProgress.value = null
@@ -311,14 +322,44 @@ export function useMaterials (
         total: entries.length,
         label: '',
       }
+      // 元数据齐了就算这次连接的缓存建立完成，图标可以慢慢补
+      cachedClient = client.value
       void loadIconsInBackground(generation)
     } catch (error: unknown) {
+      invalidate()
       loadProgress.value = null
       const msg = error instanceof Error ? error.message : String(error)
       notify(`加载素材列表失败: ${msg}`, 'error')
     } finally {
       loading.value = false
     }
+  }
+
+  /** 新增一条后只补读这一个目录，不为了一条素材重扫整个设备 */
+  async function appendMaterial (storage: MaterialStorage, dirName: string) {
+    if (cachedClient !== client.value) {
+      // 缓存还没建立过，下次进页面本来就要全量拉，这里不必补
+      return
+    }
+    const material = await loadMaterial(storage, dirName)
+    if (!material) {
+      invalidate()
+      return
+    }
+    materials.value = [...materials.value, material]
+    void loadIconsInBackground(iconLoadGeneration)
+  }
+
+  function removeFromList (material: RemoteMaterial) {
+    const idx = materials.value.findIndex(m => m.listKey === material.listKey)
+    if (idx < 0) {
+      return
+    }
+    const iconUrl = materials.value[idx].info.iconUrl
+    if (iconUrl) {
+      URL.revokeObjectURL(iconUrl)
+    }
+    materials.value = materials.value.filter((_, i) => i !== idx)
   }
 
   async function findExistingMaterialStorage (uuid: string): Promise<MaterialStorage | null> {
@@ -351,7 +392,7 @@ export function useMaterials (
     transferring.value = true
     transferProgress.value = { fileName: '解压 zip…', bytes: 0, total: 1, isUpload: true }
     transferLock.begin('上传素材', '解压 zip…')
-    let needRefresh = false
+    let uploadedDir: string | null = null
 
     try {
       const extracted = await extractMaterialFromZip(file)
@@ -388,11 +429,13 @@ export function useMaterials (
       }
 
       // 批量上传时跳过每次的重载/刷新，由调用方在整批结束后统一执行一次
-      if (!options.skipReload) {
+      if (options.skipReload) {
+        invalidate()
+      } else {
         await reloadAssetsOnDevice()
+        uploadedDir = extracted.uuid
       }
       notify(`已上传素材: ${extracted.name}`, 'success')
-      needRefresh = !options.skipReload
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       notify(`上传失败: ${msg}`, 'error')
@@ -403,10 +446,9 @@ export function useMaterials (
       transferLock.end()
     }
 
-    // refresh 要逐个重读设备上所有素材的元数据，放在锁里会让"已上传"提示弹出后
-    // 遮罩仍停在 100% 不动，看着像卡死
-    if (needRefresh) {
-      await refresh()
+    // 补读要发 USB 请求，放在锁里会让"已上传"提示弹出后遮罩仍停在 100% 不动，看着像卡死
+    if (uploadedDir) {
+      await appendMaterial(storage, uploadedDir)
     }
   }
 
@@ -498,30 +540,20 @@ export function useMaterials (
       removeCachedMaterialIcon(material.info.uuid)
       await reloadAssetsOnDevice()
       notify(`已删除素材: ${material.info.name}`, 'success')
-      await refresh()
+      removeFromList(material)
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       notify(`删除失败: ${msg}`, 'error')
     }
   }
 
-  if (autoRefresh) {
-    watch(client, c => {
-      if (c) {
-        refresh()
-      } else {
-        iconLoadGeneration += 1
-        revokeIconUrls(materials.value)
-        materials.value = []
-        loadProgress.value = null
-      }
-    }, { immediate: true })
-
-    watch(sdMounted, () => {
-      if (client.value) {
-        refresh()
-      }
-    })
+  /**
+   * 页面挂载期间跟随连接状态自动加载。缓存命中时 ensureLoaded 不发任何请求，
+   * 所以来回切页面是零成本的；watch 绑在组件作用域上，离开页面即停。
+   */
+  function bindAutoLoad () {
+    ensureLoaded()
+    watch([client, sdMounted], () => ensureLoaded())
   }
 
   return {
@@ -531,13 +563,30 @@ export function useMaterials (
     transferProgress,
     loadProgress,
     storageOptions,
+    bindAutoLoad,
+    ensureLoaded,
     refresh,
+    invalidate,
     uploadZip,
     reloadAssets: reloadAssetsOnDevice,
     downloadZip,
     deleteMaterial,
   }
 }
+
+// 连接会话切换即作废缓存。detached scope 保证这两个 watch 不会被首个调用方的组件作用域收走。
+effectScope(true).run(() => {
+  watch(client, () => {
+    iconLoadGeneration += 1
+    invalidate()
+    revokeIconUrls(materials.value)
+    materials.value = []
+    loadProgress.value = null
+  })
+
+  // SD 插拔改变可见素材范围，只作废缓存，等页面自己决定要不要重扫
+  watch(sdMounted, invalidate)
+})
 
 function guessImageMime (path: string): string {
   const ext = path.split('.').pop()?.toLowerCase() ?? ''

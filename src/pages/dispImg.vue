@@ -116,7 +116,7 @@
 
 <script lang="ts" setup>
   import type { DispImgInfo } from '@/types/dispimg'
-  import { computed, ref, toRef, watch } from 'vue'
+  import { computed, ref } from 'vue'
   import ConfirmDialog from '@/components/ConfirmDialog.vue'
   import DispImgCard from '@/components/DispImgCard.vue'
   import DispImgUploadDialog from '@/components/DispImgUploadDialog.vue'
@@ -125,19 +125,22 @@
   import { useUsb } from '@/composables/useUsb'
   import { formatBytes } from '@/utils/format'
 
-  const { connected, client } = useUsb()
+  const { connected } = useUsb()
 
   const {
     images,
     loading,
     transferring,
     transferProgress,
+    bindAutoLoad,
     refresh,
     loadThumb,
     upload,
     download,
     remove,
-  } = useDispImg(toRef(client))
+  } = useDispImg()
+
+  bindAutoLoad()
 
   const showUploadDialog = ref(false)
   const previewImg = ref<DispImgInfo | null>(null)
@@ -161,12 +164,6 @@
       ? `确定删除扩列图「${pendingDelete.value.name}」？此操作不可恢复。`
       : '',
   )
-
-  watch(connected, isConnected => {
-    if (isConnected) {
-      refresh()
-    }
-  }, { immediate: true })
 
   async function onUploadConfirm (blob: Blob, name: string) {
     try {

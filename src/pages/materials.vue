@@ -178,7 +178,7 @@
 
 <script lang="ts" setup>
   import type { MaterialStorage, RemoteMaterial } from '@/types/material'
-  import { computed, ref, toRef } from 'vue'
+  import { computed, ref } from 'vue'
   import ConfirmDialog from '@/components/ConfirmDialog.vue'
   import MaterialList from '@/components/MaterialList.vue'
   import PageHeader from '@/components/PageHeader.vue'
@@ -189,7 +189,7 @@
   import { clearAllMaterialIconCache } from '@/utils/materialIconCache'
 
   const { notify } = useNotifications()
-  const { connected, client, devInfo } = useUsb()
+  const { connected, devInfo } = useUsb()
 
   const sdMounted = computed(() => devInfo.value?.sd_mounted === '1')
 
@@ -200,11 +200,14 @@
     transferProgress,
     loadProgress,
     storageOptions,
+    bindAutoLoad,
     refresh,
     uploadZip,
     downloadZip,
     deleteMaterial,
-  } = useMaterials(toRef(client), sdMounted)
+  } = useMaterials()
+
+  bindAutoLoad()
 
   const transferPercent = computed(() => {
     const p = transferProgress.value

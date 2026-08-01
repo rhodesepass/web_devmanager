@@ -160,7 +160,7 @@
 
 <script lang="ts" setup>
   import type { AppStorage, RemoteApp, SharedAppEntry } from '@/types/app'
-  import { computed, onMounted, ref, toRef } from 'vue'
+  import { computed, onMounted, ref } from 'vue'
   import AppList from '@/components/AppList.vue'
   import ConfirmDialog from '@/components/ConfirmDialog.vue'
   import PageHeader from '@/components/PageHeader.vue'
@@ -172,7 +172,7 @@
   import { fetchSharedAppManifest, updatableUuidSet } from '@/utils/sharedApps'
 
   const { notify } = useNotifications()
-  const { connected, client, devInfo } = useUsb()
+  const { connected, devInfo } = useUsb()
 
   const sdMounted = computed(() => devInfo.value?.sd_mounted === '1')
 
@@ -182,11 +182,14 @@
     transferring,
     transferProgress,
     storageOptions,
+    bindAutoLoad,
     refresh,
     uploadZip,
     downloadZip,
     deleteApp,
-  } = useApps(toRef(client), sdMounted)
+  } = useApps()
+
+  bindAutoLoad()
 
   // 商店 manifest 后台静默拉取,失败不打扰(离线也能正常管理设备应用)
   const storeEntries = ref<SharedAppEntry[]>([])
