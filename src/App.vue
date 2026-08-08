@@ -1,7 +1,7 @@
 <template>
   <v-app>
     <v-navigation-drawer
-      v-if="!isEmbed"
+      v-if="!isEmbed && !isFullscreen"
       border="end"
       color="surface"
       permanent
@@ -60,7 +60,7 @@
     <v-main scrollable>
       <v-container
         class="page-container pa-6"
-        :class="{ 'page-container--embed': isEmbed }"
+        :class="{ 'page-container--embed': isEmbed, 'page-container--fullscreen': isFullscreen }"
         fluid
       >
         <router-view />
@@ -88,6 +88,7 @@
 
 <script lang="ts" setup>
   import { computed, ref } from 'vue'
+  import { useRoute } from 'vue-router'
   import logo from '@/assets/logo.png'
   import PlatformNoticeDialog from '@/components/PlatformNoticeDialog.vue'
   import TransferLockOverlay from '@/components/TransferLockOverlay.vue'
@@ -100,6 +101,8 @@
   const { notifications } = useNotifications()
   const { connected, isSupported, connect, disconnect } = useUsb()
   const { isEmbed } = useEmbedMode()
+  const route = useRoute()
+  const isFullscreen = computed(() => route.meta.fullscreen === true)
   const { active: transferLocked } = useTransferLock()
   const {
     show: showPlatformNotice,
@@ -140,6 +143,7 @@
     { path: '/files', icon: 'mdi-folder', title: '文件' },
     { path: '/materials', icon: 'mdi-play-box-multiple', title: '素材' },
     { path: '/materials/share', icon: 'mdi-earth', title: '素材库' },
+    { path: '/editor', icon: 'mdi-movie-edit-outline', title: '素材编辑' },
     { path: '/apps', icon: 'mdi-apps', title: '应用' },
     { path: '/apps/share', icon: 'mdi-storefront-outline', title: '应用库' },
     { path: '/dispimg', icon: 'mdi-image-multiple', title: '扩列图' },
@@ -157,5 +161,11 @@
 .page-container--embed {
   max-width: none;
   padding: 12px !important;
+}
+
+.page-container--fullscreen {
+  max-width: none;
+  padding: 0 !important;
+  height: 100%;
 }
 </style>

@@ -13,4 +13,7 @@ doc/
 .history/
 public/asset2share/
 public/app2share/
+public/ffmpeg/
 scripts/deploy.sh
+
+__fixtures__

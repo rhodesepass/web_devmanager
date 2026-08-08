@@ -9,8 +9,8 @@ import { createApp } from 'vue'
 
 // Plugins
 import { registerPlugins } from '@/plugins'
-
 // Components
+import router from '@/router'
 import App from './App.vue'
 
 // Styles
@@ -20,4 +20,5 @@ const app = createApp(App)
 
 registerPlugins(app)
 
-app.mount('#app')
+// 等首次路由解析完再挂载：全屏路由（meta.fullscreen）直进时避免 drawer 闪现一帧
+router.isReady().then(() => app.mount('#app'))

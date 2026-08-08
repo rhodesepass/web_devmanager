@@ -213,6 +213,7 @@
                       <a :href="links.release" rel="noopener" target="_blank">交互式 BOM</a> 为准;
                       每个料的淘宝购买链接见
                       <a :href="links.bomOnline" rel="noopener" target="_blank">在线 BOM(腾讯文档)</a>。
+                      如果你想偷懒，可以直接在群里大喊“谁有卖套件包”。
                     </p>
 
                     <div

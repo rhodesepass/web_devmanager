@@ -96,6 +96,17 @@ export async function buildMaterialZip (
   })
 }
 
+/** 无压缩（STORE）打包：工程备份用——内容主要是已压缩的视频，DEFLATE 白费时间 */
+export async function buildStoredZip (
+  files: { name: string, data: Uint8Array | Blob }[],
+): Promise<Blob> {
+  const zip = new JSZip()
+  for (const file of files) {
+    zip.file(file.name, file.data)
+  }
+  return zip.generateAsync({ type: 'blob', compression: 'STORE' })
+}
+
 export function triggerBlobDownload (blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

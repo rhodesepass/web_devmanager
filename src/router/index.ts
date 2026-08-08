@@ -31,6 +31,15 @@ const router = createRouter({
       meta: { embedCapable: true },
     },
     {
+      path: '/editor',
+      component: () => import('@/pages/editor.vue'),
+    },
+    {
+      path: '/editor/cut/:segment(loop|intro)',
+      component: () => import('@/pages/editorCut.vue'),
+      meta: { fullscreen: true },
+    },
+    {
       path: '/dispimg',
       component: () => import('@/pages/dispImg.vue'),
     },

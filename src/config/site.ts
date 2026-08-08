@@ -27,5 +27,5 @@ export const siteLinks = {
    * 通用离线刷机程序（zip：Windows 用 exe，其他平台可用 uv run main.py）
    * 适用于不支持 WebUSB 或在线刷机失败时的备选方案
    */
-  offlineFlashTool: 'https://openlist.slstudio.top/%E7%99%BD%E9%93%B6%E7%9A%84%E9%80%9A%E8%A1%8C%E8%AF%81/%EF%BC%88Windows%E7%94%A8%E6%88%B7%E8%BF%90%E8%A1%8C%E9%87%8C%E9%9D%A2%E7%9A%84EXE%EF%BC%89%E5%88%B7%E6%9C%BA%E7%A8%8B%E5%BA%8FV3.zip',
+  offlineFlashTool: 'https://openlist.slstudio.top/%E7%99%BD%E9%93%B6%E7%9A%84%E9%80%9A%E8%A1%8C%E8%AF%81/%E5%88%B7%E6%9C%BA%E7%A8%8B%E5%BA%8Fepass_flasher_v3.2.zip',
 } as const

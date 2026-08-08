@@ -150,6 +150,36 @@
           </p>
         </template>
 
+        <template v-else-if="kind === 'inapp'">
+          <v-alert
+            class="mb-4"
+            density="compact"
+            type="error"
+            variant="tonal"
+          >
+            QQ / 微信内置浏览器无法使用 WebUSB，连接设备和刷机功能均不可用。
+          </v-alert>
+
+          <p class="text-body-2 mb-3">
+            请改用 <strong>Edge</strong> 或 <strong>Chrome</strong> 打开本页：
+          </p>
+
+          <ol class="platform-notice__steps text-body-2 mb-4">
+            <li class="mb-3">手机端：点击右上角「···」菜单，选择「在浏览器中打开」</li>
+            <li>电脑端：复制下方链接，粘贴到 Edge 或 Chrome 地址栏</li>
+          </ol>
+
+          <v-btn
+            block
+            color="primary"
+            prepend-icon="mdi-content-copy"
+            variant="tonal"
+            @click="copyText(pageUrl, '链接已复制')"
+          >
+            复制本页链接
+          </v-btn>
+        </template>
+
         <template v-else-if="kind === 'nowebusb'">
           <v-alert
             class="mb-4"
@@ -218,6 +248,7 @@ const emit = defineEmits<{
 
 const { notify } = useNotifications()
 const androidDownloadLoading = ref(false)
+const pageUrl = typeof location === 'undefined' ? '' : location.href
 
 // public/install_driver.ps1 与驱动 zip 都随本站部署;包一层 powershell -c 便于直接粘进 Win+R
 const windowsOneLiner = 'powershell -ExecutionPolicy ByPass -c "irm https://epm.iccmc.cc/install_driver.ps1 | iex"'
@@ -264,6 +295,13 @@ const meta = computed(() => {
         title: 'iOS 不支持',
         subtitle: '请使用电脑或 Android',
         icon: 'mdi-apple',
+        color: 'error',
+      }
+    case 'inapp':
+      return {
+        title: '请在浏览器中打开',
+        subtitle: 'QQ / 微信内置浏览器不受支持',
+        icon: 'mdi-open-in-new',
         color: 'error',
       }
     case 'nowebusb':

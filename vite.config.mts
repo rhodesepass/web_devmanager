@@ -44,7 +44,22 @@ export default defineConfig({
       '.vue',
     ],
   },
+  // ffmpeg.wasm 内部 new Worker(new URL(...)) 不能被预打包，core 走 public/ 绝对 URL
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+  },
   server: {
     port: 3000,
+    // 多线程 ffmpeg.wasm 需要 SharedArrayBuffer => 跨源隔离
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
   },
 })
