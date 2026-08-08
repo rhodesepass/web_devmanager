@@ -1,0 +1,15 @@
+html.lt-light{
+/* Elevation is printed, not glassy. Shadows are short, hard and
+   slightly warm — a card lying on paper under flat lab light. */
+--shadow-0:none;
+--shadow-1:0 1px 0 rgba(20,19,15,.10);
+--shadow-2:0 2px 0 rgba(20,19,15,.14), 0 6px 18px rgba(20,19,15,.06);
+--shadow-3:0 3px 0 rgba(20,19,15,.18), 0 14px 32px rgba(20,19,15,.10);
+--shadow-inset:inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(20,19,15,.08);
+--shadow-accent:0 2px 0 var(--orange-5);
+--glow-scan:0 0 0 1px var(--orange-3), 0 0 24px rgba(232,114,42,.25);
+
+/* Blur is used exactly once: over photography, as a protection plate. */
+--blur-plate:blur(6px) saturate(.85);/* @kind other */
+--plate-tint:rgba(243,237,226,.82);/* @kind other */
+}

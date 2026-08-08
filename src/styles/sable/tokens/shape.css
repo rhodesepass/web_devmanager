@@ -1,0 +1,27 @@
+html.sable-dark{
+/* Corners are square by default. Radius is used sparingly and never above 4px
+   except for pills. The signature corner treatment is a CHAMFER, not a radius. */
+--radius-none:0px;
+--radius-xs:1px;
+--radius-sm:2px;
+--radius-md:4px;
+--radius-pill:999px;
+
+/* Chamfer sizes, applied via clip-path corner cuts */
+--chamfer-sm:6px;
+--chamfer-md:10px;
+--chamfer-lg:16px;
+--chamfer-xl:24px;
+
+/* Ready-made clip paths: bottom-left + top-right cut (the house shape) */
+--clip-chamfer-sm:polygon(0 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%); /* @kind other */
+--clip-chamfer-md:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%); /* @kind other */
+--clip-chamfer-lg:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%); /* @kind other */
+--clip-chamfer-both:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px); /* @kind other */
+--clip-tag:polygon(0 0,100% 0,calc(100% - 8px) 100%,0 100%); /* @kind other */
+
+/* Border widths */
+--border-hairline:1px;
+--border-thick:2px;
+--border-accent:3px;
+}

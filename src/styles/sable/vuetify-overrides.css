@@ -1,0 +1,241 @@
+/* Sable Ops → Vuetify 4 覆盖层（仅暗色主题生效）。
+   改编自 Sable Ops Design System integrations/vuetify/sable-vuetify.css：
+   - 所有规则限定在 html.sable-dark 作用域下，亮色主题完全不受影响；
+   - 原版依赖全局 defaults 注入的 .sable-* 标记类，这里改为直接命中
+     Vuetify 组件类，避免组件默认值污染亮色主题。
+   加载顺序：vuetify/styles → tokens → 本文件。 */
+
+html.sable-dark {
+  color-scheme: dark;
+}
+
+/* ---- 基础 ---------------------------------------------------------------- */
+html.sable-dark ::selection { background: var(--amber-500); color: var(--ink-950); }
+html.sable-dark body { font: var(--type-body); }
+
+/* ---- 页面底纹：蓝图网格 + 径向暗角（token 的 2.8% 在整页底面上太隐蔽，略调亮） ---- */
+html.sable-dark .v-application {
+  background-image:
+    var(--texture-vignette),
+    linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px);
+  background-size: 100% 100%, var(--texture-grid-size), var(--texture-grid-size);
+}
+
+/* ---- 字体 ---------------------------------------------------------------- */
+html.sable-dark .v-application,
+html.sable-dark .v-overlay-container {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+html.sable-dark .v-application :lang(zh),
+html.sable-dark .v-application [lang^="zh"],
+html.sable-dark .v-overlay-container :lang(zh) {
+  font-family: var(--font-han-sans);
+  letter-spacing: var(--tracking-han-body);
+}
+html.sable-dark .v-application h1,
+html.sable-dark .v-application h2,
+html.sable-dark .v-application h3,
+html.sable-dark .v-application .text-h1,
+html.sable-dark .v-application .text-h2,
+html.sable-dark .v-application .text-h3,
+html.sable-dark .v-application .text-h4 {
+  font-family: var(--font-display);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+}
+/* 叙事层 — 只手动使用，绝不默认 */
+html.sable-dark .sable-serif { font-family: var(--font-han-serif); font-weight: 600; letter-spacing: 0; text-transform: none; }
+/* 干员代号 / 档案行 */
+html.sable-dark .sable-han-name { font: 900 var(--text-2xl)/1.1 var(--font-han-sans); letter-spacing: var(--tracking-han-name); }
+html.sable-dark .sable-han-row { font: 400 var(--text-base)/1 var(--font-han-sans); letter-spacing: var(--tracking-han-name); }
+html.sable-dark .v-application .text-mono,
+html.sable-dark .sable-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ---- 按钮：压缩体大写 + 右下切角 ------------------------------------------ */
+html.sable-dark .v-btn {
+  font-family: var(--font-condensed);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-radius: 0;
+  transition: var(--transition-control);
+}
+html.sable-dark .v-btn:not(.v-btn--icon) { clip-path: var(--clip-chamfer-sm); }
+html.sable-dark .v-btn.v-btn--size-large { clip-path: var(--clip-chamfer-md); }
+/* 切角会把 outlined 变体的 1px 描边沿对角线截断，出现缺口，所以描边按钮保持直角 */
+html.sable-dark .v-btn.v-btn--variant-outlined { clip-path: none; }
+html.sable-dark .v-btn:active { transform: translateY(1px); }
+html.sable-dark .v-btn .v-btn__overlay { border-radius: 0; }
+html.sable-dark .v-btn--icon { border-radius: 0 !important; }
+
+/* ---- 卡片：发丝线盒子，无环境阴影 ----------------------------------------- */
+html.sable-dark .v-card {
+  border: 1px solid var(--line-hairline);
+  border-radius: 0;
+  clip-path: var(--clip-chamfer-md);
+}
+html.sable-dark .v-card > .v-card-title,
+html.sable-dark .v-card > .v-card-item > .v-card-title {
+  font-family: var(--font-condensed);
+  font-weight: var(--weight-bold);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+}
+/* 可浏览内容卡片可用轻微圆角 + 抬升，见 readme「圆角」 */
+html.sable-dark .v-card.sable-card--browsable { clip-path: none; border-radius: var(--radius-md); box-shadow: var(--shadow-raised); }
+html.sable-dark .v-card--variant-elevated,
+html.sable-dark .v-sheet--variant-elevated { box-shadow: var(--shadow-raised); }
+
+/* ---- 输入：内嵌井 + 全息蓝聚焦辉光 ---------------------------------------- */
+html.sable-dark .v-field { border-radius: 0; }
+/* 注意：不能给 outlined 字段加整体背景填充——Vuetify 的浮动标签骑在顶边上，
+   背景色块的上边缘会从标签文字中间穿过 */
+html.sable-dark .v-field__outline { --v-field-border-width: 1px; --v-field-border-opacity: 1; color: var(--line-subtle); }
+/* 浮动标签在 .v-field__outline 内部，会继承上面给描边用的 currentColor（14% 白），
+   必须显式恢复文字颜色 */
+html.sable-dark .v-field-label--floating { color: var(--text-secondary); opacity: 1; }
+html.sable-dark .v-field--focused .v-field-label--floating { color: var(--holo-500); }
+html.sable-dark .v-field--error .v-field-label--floating { color: var(--alert-500); }
+html.sable-dark .v-field--focused .v-field__outline { color: var(--holo-500); }
+html.sable-dark .v-field--focused { box-shadow: 0 0 0 1px var(--holo-500), 0 0 14px rgba(63, 157, 255, .18); }
+html.sable-dark .v-field--error .v-field__outline { color: var(--alert-500); }
+html.sable-dark .v-checkbox .v-selection-control__input > .v-icon { border-radius: 0; }
+html.sable-dark .v-switch__thumb { border-radius: 0; width: 14px; height: 12px; box-shadow: none; }
+html.sable-dark .v-switch__track { border-radius: 0; height: 18px; opacity: 1; background: var(--surface-inset); border: 1px solid var(--line-subtle); }
+html.sable-dark .v-slider-thumb__surface { border-radius: 0; width: 6px; height: 12px; box-shadow: 0 0 10px rgba(255, 161, 31, .5); }
+html.sable-dark .v-slider-track__background,
+html.sable-dark .v-slider-track__fill { border-radius: 0; }
+
+/* ---- Chip / Alert / Snackbar / Tooltip ------------------------------------ */
+html.sable-dark .v-chip {
+  border-radius: 0;
+  font-family: var(--font-condensed);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+html.sable-dark .v-chip.sable-chip--tag { clip-path: var(--clip-tag); padding-inline: 10px 14px; }
+html.sable-dark .v-alert { border-radius: 0; }
+html.sable-dark .v-alert--border-start { border-inline-start-width: 3px; }
+html.sable-dark .v-alert-title {
+  font-family: var(--font-condensed);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+}
+html.sable-dark .v-snackbar__wrapper {
+  border-radius: 0;
+  border: 1px solid var(--line-subtle);
+  border-top: 2px solid var(--holo-500);
+  box-shadow: var(--shadow-raised);
+  clip-path: var(--clip-chamfer-md);
+}
+html.sable-dark .v-tooltip > .v-overlay__content {
+  border-radius: 0;
+  background: var(--paper-100);
+  color: var(--ink-950);
+  font: var(--weight-semibold) var(--text-2xs)/1.2 var(--font-condensed);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  opacity: 1;
+}
+
+/* ---- 对话框：模糊遮罩 + 琥珀封顶条 ----------------------------------------- */
+html.sable-dark .v-overlay__scrim { backdrop-filter: var(--blur-overlay); }
+html.sable-dark .v-dialog > .v-overlay__content > .v-card {
+  border-radius: 0;
+  background: var(--ink-850);
+  border: 1px solid var(--line-subtle);
+  box-shadow: var(--shadow-overlay);
+  clip-path: var(--clip-chamfer-lg);
+  border-top: 3px solid var(--amber-500);
+}
+/* 毛玻璃浮层 — 分析称之为核心材质 */
+html.sable-dark .sable-glass { background: rgba(15, 19, 27, .72) !important; backdrop-filter: var(--blur-panel); }
+
+/* ---- 导航：导轨 + 密集抽屉 ------------------------------------------------- */
+html.sable-dark .v-navigation-drawer .v-list-item {
+  border-radius: 0;
+  font-family: var(--font-condensed);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+}
+html.sable-dark .v-navigation-drawer .v-list-item--active {
+  color: var(--amber-500);
+  background: rgba(255, 161, 31, .08);
+  box-shadow: inset 3px 0 0 var(--amber-500);
+}
+html.sable-dark .v-navigation-drawer .v-list-item--active .v-list-item__overlay { opacity: 0; }
+html.sable-dark .v-navigation-drawer--rail .v-list-item { box-shadow: none; }
+html.sable-dark .v-navigation-drawer--rail .v-list-item--active { box-shadow: inset 2px 0 0 var(--amber-500); }
+/* 密集内层抽屉：30px 行高、思源黑体、每行图标 */
+html.sable-dark .sable-drawer-dense .v-list-item {
+  min-height: 30px;
+  padding-inline: var(--space-4);
+  font-family: var(--font-han-sans);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-han-name);
+  text-transform: none;
+}
+html.sable-dark .sable-drawer-dense .v-list-item--active { box-shadow: inset 2px 0 0 var(--amber-500); }
+html.sable-dark .sable-drawer-dense .v-list-subheader {
+  font: var(--weight-bold) var(--text-3xs)/1 var(--font-condensed);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--steel-500);
+  min-height: 26px;
+}
+html.sable-dark .sable-drawer-dense .v-list-item__prepend > .v-icon { opacity: 1; margin-inline-end: 10px; }
+
+/* ---- 标签页 / 表格 --------------------------------------------------------- */
+html.sable-dark .v-tab {
+  font-family: var(--font-condensed);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  border-radius: 0;
+}
+html.sable-dark .v-table thead th {
+  background: var(--ink-800);
+  font: var(--weight-bold) var(--text-3xs)/1 var(--font-condensed) !important;
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--text-tertiary) !important;
+  border-bottom: 1px solid var(--line-subtle) !important;
+}
+html.sable-dark .v-table tbody td { border-bottom: 1px solid var(--line-hairline) !important; }
+html.sable-dark .v-table tbody td.text-end,
+html.sable-dark .sable-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+html.sable-dark .v-table tbody tr.v-data-table__selected { background: var(--surface-selected); box-shadow: inset 3px 0 0 var(--amber-500); }
+
+/* ---- 进度条：轨道用 ink-700（本主题 --v-border-opacity 仅 0.08，默认轨道几乎不可见） ---- */
+html.sable-dark .v-progress-linear { border-radius: 0; }
+html.sable-dark .v-progress-linear__background,
+html.sable-dark .v-progress-linear__buffer { background: var(--ink-700); opacity: 1; }
+
+/* ---- 品牌装置 --------------------------------------------------------------- */
+html.sable-dark .sable-hazard { height: 6px; background: var(--texture-hazard); background-color: rgba(255, 255, 255, .05); }
+html.sable-dark .sable-grid { background-image: var(--texture-grid); background-size: var(--texture-grid-size); }
+html.sable-dark .sable-scanline { background-image: var(--texture-scanline); }
+/* 静态烘焙光 — 永不动画，一个面只放一层 */
+html.sable-dark .sable-light { position: absolute; inset: -40%; pointer-events: none; z-index: 0; }
+html.sable-dark .sable-light--backlight { background: var(--light-backlight); }
+html.sable-dark .sable-light--halo { background: var(--light-halo); }
+html.sable-dark .sable-light--rim { inset: 0; background: var(--light-rim-top); }
+html.sable-dark .sable-light--floor { background: var(--light-floor); }
+
+/* ---- 动效：机械感，永不硬切 -------------------------------------------------- */
+html.sable-dark .v-application .v-list-item,
+html.sable-dark .v-application .v-chip { transition: var(--transition-control); }
+html.sable-dark .fade-transition-enter-active,
+html.sable-dark .fade-transition-leave-active { transition: opacity var(--duration-base) var(--ease-mech); }
+@media (prefers-reduced-motion: reduce) {
+  html.sable-dark .v-application * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

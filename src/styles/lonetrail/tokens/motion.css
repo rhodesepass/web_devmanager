@@ -1,0 +1,17 @@
+html.lt-light{
+/* Machine motion. Nothing bounces, nothing overshoots — instruments
+   step and settle. Long distances get a mechanical ease; state changes
+   are near-instant. */
+--ease-instrument:cubic-bezier(.2,.8,.2,1);/* @kind other */
+--ease-linear:linear;/* @kind other */
+--ease-step:steps(6,end);/* @kind other */
+--dur-1:90ms;/* @kind other */
+--dur-2:160ms;/* @kind other */
+--dur-3:260ms;/* @kind other */
+--dur-4:520ms;/* @kind other */
+--transition-state:all var(--dur-2) var(--ease-instrument);/* @kind other */
+--transition-panel:transform var(--dur-3) var(--ease-instrument),opacity var(--dur-3) var(--ease-instrument);/* @kind other */
+}
+@keyframes lt-sweep{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes lt-blink{0%,60%{opacity:1}61%,100%{opacity:.25}}
+@keyframes lt-wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}

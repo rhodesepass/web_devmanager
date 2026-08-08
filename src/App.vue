@@ -3,6 +3,7 @@
     <v-navigation-drawer
       v-if="!isEmbed && !isFullscreen"
       border="end"
+      class="app-rail"
       color="surface"
       permanent
       rail
@@ -35,7 +36,7 @@
       </v-list>
 
       <template #append>
-        <div class="d-flex justify-center pb-4">
+        <div class="d-flex flex-column align-center ga-2 pb-4">
           <v-tooltip
             location="end"
             :text="connectionTooltip"
@@ -50,6 +51,21 @@
                 size="small"
                 variant="tonal"
                 @click="onToggleConnection"
+              />
+            </template>
+          </v-tooltip>
+
+          <v-tooltip
+            location="end"
+            :text="isDark ? '切换到亮色主题' : '切换到暗色主题'"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                :icon="isDark ? 'mdi-white-balance-sunny' : 'mdi-weather-night'"
+                size="small"
+                variant="text"
+                @click="onToggleTheme"
               />
             </template>
           </v-tooltip>
@@ -87,8 +103,9 @@
 </template>
 
 <script lang="ts" setup>
-  import { computed, ref } from 'vue'
+  import { computed, ref, watchEffect } from 'vue'
   import { useRoute } from 'vue-router'
+  import { useTheme } from 'vuetify'
   import logo from '@/assets/logo.png'
   import PlatformNoticeDialog from '@/components/PlatformNoticeDialog.vue'
   import TransferLockOverlay from '@/components/TransferLockOverlay.vue'
@@ -97,6 +114,7 @@
   import { usePlatformNotice } from '@/composables/usePlatformNotice'
   import { useTransferLock } from '@/composables/useTransferLock'
   import { useUsb } from '@/composables/useUsb'
+  import { THEME_STORAGE_KEY } from '@/plugins/vuetify'
 
   const { notifications } = useNotifications()
   const { connected, isSupported, connect, disconnect } = useUsb()
@@ -111,6 +129,22 @@
   } = usePlatformNotice(isEmbed.value)
 
   const connecting = ref(false)
+
+  const theme = useTheme()
+  const isDark = computed(() => theme.global.current.value.dark)
+
+  // 两套设计系统的 tokens 与覆盖层按 html 上的类隔离：
+  // 暗色 Sable Ops → html.sable-dark；亮色 Lone Trail → html.lt-light
+  watchEffect(() => {
+    document.documentElement.classList.toggle('sable-dark', isDark.value)
+    document.documentElement.classList.toggle('lt-light', !isDark.value)
+  })
+
+  function onToggleTheme () {
+    const next = isDark.value ? 'light' : 'dark'
+    theme.change(next)
+    localStorage.setItem(THEME_STORAGE_KEY, next)
+  }
 
   const connectionTooltip = computed(() => {
     if (!isSupported.value) {
@@ -152,6 +186,17 @@
     { path: '/repro', icon: 'mdi-clipboard-check-outline', title: '复刻向导' },
   ]
 </script>
+
+<style>
+/* 导轨很窄，高度不足时隐藏滚动条（仍可滚轮滚动） */
+.app-rail .v-navigation-drawer__content {
+  scrollbar-width: none;
+}
+
+.app-rail .v-navigation-drawer__content::-webkit-scrollbar {
+  display: none;
+}
+</style>
 
 <style scoped>
 .page-container {

@@ -1,0 +1,193 @@
+/* Lone Trail → Vuetify 覆盖层（仅亮色主题生效）。
+   改编自 Lone Trail Design System vuetify/lone-trail.css：
+   - 所有规则限定在 html.lt-light 作用域下，暗色主题完全不受影响；
+   - 原版依赖全局 defaults，这里改为直接命中 Vuetify 组件类。
+   风格要点：纸色底、结构性发丝线、直角、印刷式硬阴影、大写宽字距标签、
+   等宽机器数据、唯一的品牌彩色是莱茵橙。 */
+
+html.lt-light {
+  color-scheme: light;
+}
+
+/* ---- 基础 ---------------------------------------------------------------- */
+html.lt-light ::selection { background: var(--orange-2); color: var(--ink-0); }
+html.lt-light body { font: var(--type-body); }
+
+/* ---- 页面底纹：24px 坐标纸格线（规范中的默认底面） -------------------------- */
+html.lt-light .v-application {
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ---- 字体 ---------------------------------------------------------------- */
+html.lt-light .v-application,
+html.lt-light .v-overlay-container {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+html.lt-light .v-application :lang(zh),
+html.lt-light .v-application [lang^="zh"],
+html.lt-light .v-overlay-container :lang(zh) {
+  font-family: var(--font-cjk);
+}
+html.lt-light .v-application h1,
+html.lt-light .v-application h2,
+html.lt-light .v-application h3,
+html.lt-light .v-application .text-h1,
+html.lt-light .v-application .text-h2,
+html.lt-light .v-application .text-h3,
+html.lt-light .v-application .text-h4 {
+  font-family: var(--font-display);
+  letter-spacing: var(--track-tight);
+}
+/* 微标签与等宽数据 — 手动使用 */
+html.lt-light .lt-overline { font: var(--type-label); letter-spacing: var(--track-wide); text-transform: uppercase; color: var(--text-muted); opacity: 1; }
+html.lt-light .v-application .text-mono,
+html.lt-light .lt-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ---- 按钮：扁平、直角、宽字距；按下不缩放 ---------------------------------- */
+html.lt-light .v-btn {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-radius: 0;
+  transition: var(--transition-state);
+}
+html.lt-light .v-btn .v-btn__overlay { border-radius: 0; }
+/* 主按钮带 2px 同色系深色落线，像凸版印刷 */
+html.lt-light .v-btn--variant-flat.bg-primary,
+html.lt-light .v-btn--variant-elevated.bg-primary { box-shadow: var(--shadow-accent); }
+html.lt-light .v-btn--variant-outlined { border-color: var(--line-heavy); }
+html.lt-light .v-btn--variant-outlined:hover { background: var(--paper-2); }
+html.lt-light .v-btn:active { transform: none; }
+html.lt-light .v-btn--icon { border-radius: 0; }
+
+/* ---- 卡片：纸面上的发丝线盒子，短硬阴影 ------------------------------------ */
+html.lt-light .v-card {
+  border: 1px solid var(--line-hair);
+  border-radius: 0;
+  box-shadow: var(--shadow-1);
+}
+html.lt-light .v-card > .v-card-title,
+html.lt-light .v-card > .v-card-item > .v-card-title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-small);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+}
+html.lt-light .v-card.lt-notch { clip-path: var(--clip-notch); border: none; outline: 1px solid var(--line-hair); outline-offset: -1px; }
+
+/* ---- 输入：实验室表单式的墨线框，聚焦转橙并加粗 ----------------------------- */
+html.lt-light .v-field { border-radius: 0; }
+html.lt-light .v-field--variant-outlined .v-field__outline { --v-field-border-width: 1px; --v-field-border-opacity: 1; }
+html.lt-light .v-field--focused .v-field__outline { --v-field-border-width: 2px; color: var(--orange-3); }
+/* 浮动标签在描边元素内部会继承 currentColor，显式恢复文字颜色 */
+html.lt-light .v-field-label--floating { color: var(--text-muted); opacity: 1; }
+html.lt-light .v-field--focused .v-field-label--floating { color: var(--orange-4); }
+html.lt-light .v-field--error .v-field-label--floating { color: var(--red-3); }
+html.lt-light .v-checkbox .v-selection-control__input > .v-icon { border-radius: 0; }
+html.lt-light .v-switch__thumb { border-radius: 0; box-shadow: none; }
+html.lt-light .v-switch__track { border-radius: 0; opacity: 1; background: var(--paper-2); border: 1px solid var(--line-hair); }
+html.lt-light .v-slider-thumb__surface { border-radius: 0; }
+html.lt-light .v-slider-track__background,
+html.lt-light .v-slider-track__fill { border-radius: 0; }
+
+/* ---- Chip / Alert / Snackbar / Tooltip ------------------------------------ */
+html.lt-light .v-chip {
+  border-radius: 0;
+  font-family: var(--font-display);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+}
+html.lt-light .v-alert { border-radius: 0; }
+html.lt-light .v-alert--border-start { border-inline-start-width: 3px; }
+html.lt-light .v-alert-title {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+html.lt-light .v-snackbar__wrapper {
+  border-radius: 0;
+  border: 1px solid var(--line-hair);
+  border-top: 3px solid var(--orange-3);
+  box-shadow: var(--shadow-2);
+}
+html.lt-light .v-tooltip > .v-overlay__content {
+  border-radius: 0;
+  background: var(--ink-0);
+  color: var(--paper-0);
+  font: var(--fw-medium) var(--fs-micro)/1.2 var(--font-display);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  opacity: 1;
+}
+
+/* ---- 对话框：暖纸色调的遮罩，永不用纯黑 ------------------------------------ */
+html.lt-light .v-overlay__scrim { background: rgba(20, 19, 15, .42); }
+html.lt-light .v-dialog > .v-overlay__content > .v-card {
+  border-radius: 0;
+  border: 1px solid var(--line-hair);
+  border-top: 3px solid var(--orange-3);
+  box-shadow: var(--shadow-3);
+}
+
+/* ---- 导航：选中态是 3px 橙色边线 ------------------------------------------- */
+html.lt-light .v-navigation-drawer .v-list-item {
+  border-radius: 0;
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+html.lt-light .v-navigation-drawer .v-list-item--active {
+  color: var(--orange-4);
+  background: var(--orange-1);
+  box-shadow: inset 3px 0 0 var(--orange-3);
+}
+html.lt-light .v-navigation-drawer .v-list-item--active .v-list-item__overlay { opacity: 0; }
+html.lt-light .v-navigation-drawer--rail .v-list-item { box-shadow: none; }
+html.lt-light .v-navigation-drawer--rail .v-list-item--active { box-shadow: inset 2px 0 0 var(--orange-3); }
+
+/* ---- 标签页 / 表格 / 进度条 ------------------------------------------------ */
+html.lt-light .v-tab {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  min-width: 0;
+  border-radius: 0;
+}
+html.lt-light .v-tabs .v-tab--selected { color: var(--text-strong); }
+html.lt-light .v-table thead th {
+  background: var(--surface-sunken);
+  font: var(--fw-medium) var(--fs-micro)/1.2 var(--font-display) !important;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
+  border-bottom: 1px solid var(--line-rule) !important;
+}
+html.lt-light .v-table tbody td { border-bottom: 1px solid var(--line-hair) !important; }
+html.lt-light .v-table tbody td.text-end { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+html.lt-light .v-divider { border-color: var(--line-hair); opacity: 1; }
+html.lt-light .v-progress-linear { border-radius: 0; }
+html.lt-light .v-progress-linear__determinate { transition: width var(--dur-3) var(--ease-instrument); }
+/* Vuetify 用 --v-border-opacity 控制轨道透明度，本主题该变量为 1（发丝线需要），
+   轨道会和进度同色实心显示、看起来永远是 100%——给轨道单独指定纸色 */
+html.lt-light .v-progress-linear__background,
+html.lt-light .v-progress-linear__buffer { background: var(--paper-3); opacity: 1; }
+
+/* ---- 品牌装置 --------------------------------------------------------------- */
+html.lt-light .lt-grid-bg { background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px); background-size: 24px 24px; }
+html.lt-light .lt-punch-bg { background-image: radial-gradient(var(--punch-dot) 1.4px, transparent 1.5px); background-size: 12px 12px; }
+
+/* ---- 动效：仪表式步进，不弹跳、不过冲 --------------------------------------- */
+html.lt-light .v-application .v-list-item,
+html.lt-light .v-application .v-chip { transition: var(--transition-state); }
+html.lt-light .fade-transition-enter-active,
+html.lt-light .fade-transition-leave-active { transition: opacity var(--dur-2) var(--ease-instrument); }
+@media (prefers-reduced-motion: reduce) {
+  html.lt-light .v-application * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

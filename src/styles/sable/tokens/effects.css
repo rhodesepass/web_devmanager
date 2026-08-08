@@ -1,0 +1,41 @@
+html.sable-dark{
+/* Shadows are used sparingly — depth comes from value contrast and hairlines.
+   When present, they are hard, near-black and offset, not soft ambient blurs. */
+--shadow-none:none;
+--shadow-panel:0 2px 0 rgba(0,0,0,.5),0 12px 32px rgba(0,0,0,.45);
+--shadow-raised:0 1px 0 rgba(0,0,0,.4),0 6px 16px rgba(0,0,0,.35);
+--shadow-overlay:0 24px 64px rgba(0,0,0,.7);
+--shadow-inset-top:inset 0 1px 0 rgba(255,255,255,.06);
+
+/* Glows carry state on dark surfaces where shadow cannot */
+--glow-amber:0 0 0 1px rgba(255,161,31,.5),0 0 18px rgba(255,161,31,.28);
+--glow-holo:0 0 0 1px rgba(63,157,255,.5),0 0 18px rgba(63,157,255,.3);
+--glow-alert:0 0 0 1px rgba(217,58,69,.55),0 0 18px rgba(217,58,69,.3);
+--focus-ring:0 0 0 1px var(--ink-950),0 0 0 3px var(--holo-500);
+
+/* Textures — reusable background-image values */
+--texture-grid:linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px); /* @kind other */
+--texture-grid-size:32px 32px;
+--texture-hazard:repeating-linear-gradient(135deg,var(--amber-500) 0 8px,transparent 8px 16px);
+--texture-scanline:repeating-linear-gradient(180deg,rgba(255,255,255,.035) 0 1px,transparent 1px 3px); /* @kind other */
+--texture-vignette:radial-gradient(120% 90% at 50% 0%,transparent 40%,rgba(0,0,0,.55) 100%); /* @kind other */
+
+/* Baked light. The source aesthetic renders lighting as STATIC layers, never real-time:
+   a backlight behind a panel, a halo behind a reward, a rim along a top edge. These are
+   fixed gradient stops — do not animate them and do not stack more than one per element. */
+--light-backlight:radial-gradient(120% 140% at 50% 120%,rgba(255,161,31,.28) 0%,rgba(255,161,31,.09) 35%,transparent 68%); /* @kind other */
+--light-backlight-holo:radial-gradient(120% 140% at 50% 120%,rgba(63,157,255,.3) 0%,rgba(63,157,255,.1) 35%,transparent 68%); /* @kind other */
+--light-halo:radial-gradient(closest-side,rgba(255,208,138,.55) 0%,rgba(255,161,31,.22) 42%,rgba(255,161,31,.06) 66%,transparent 78%); /* @kind other */
+--light-halo-holo:radial-gradient(closest-side,rgba(179,218,255,.5) 0%,rgba(63,157,255,.2) 42%,rgba(63,157,255,.05) 66%,transparent 78%); /* @kind other */
+--light-rim-top:linear-gradient(180deg,rgba(255,255,255,.14) 0%,rgba(255,255,255,.03) 18%,transparent 42%); /* @kind other */
+--light-sweep:linear-gradient(115deg,transparent 34%,rgba(255,255,255,.07) 48%,rgba(255,255,255,.02) 56%,transparent 70%); /* @kind other */
+--light-floor:radial-gradient(70% 100% at 50% 100%,rgba(255,161,31,.16) 0%,transparent 72%); /* @kind other */
+
+/* Protection gradients for text over imagery */
+--scrim-bottom:linear-gradient(180deg,transparent 0%,rgba(5,7,10,.35) 45%,rgba(5,7,10,.94) 100%); /* @kind other */
+--scrim-left:linear-gradient(90deg,rgba(5,7,10,.95) 0%,rgba(5,7,10,.6) 50%,transparent 100%); /* @kind other */
+
+/* Blur */
+--blur-panel:blur(14px) saturate(1.1); /* @kind other */
+--blur-overlay:blur(4px); /* @kind other */
+}

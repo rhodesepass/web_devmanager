@@ -1,0 +1,11 @@
+/* Sable Ops 设计系统入口。
+   tokens 与覆盖层全部限定在 html.sable-dark 作用域下，
+   仅当暗色主题激活时生效（由 App.vue 切换该类），
+   避免与 Lone Trail（html.lt-light）的同名 token 冲突。 */
+@import url('./tokens/colors.css');
+@import url('./tokens/typography.css');
+@import url('./tokens/spacing.css');
+@import url('./tokens/shape.css');
+@import url('./tokens/effects.css');
+@import url('./tokens/motion.css');
+@import url('./vuetify-overrides.css');

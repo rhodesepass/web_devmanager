@@ -1,0 +1,78 @@
+html.lt-light{
+/* ── Paper / non-colors ─────────────────────────────
+   Lone Trail is an abundance of white pushed slightly off-neutral:
+   aged photographic paper, printed matte, lit by white lab light. */
+--paper-0:#FBF8F2;
+--paper-1:#F3EDE2;
+--paper-2:#E9E1D3;
+--paper-3:#DED4C3;
+--paper-4:#CFC4B0;
+
+/* ── Ink / metal greys ─────────────────────────────── */
+--ink-0:#14130F;
+--ink-1:#26241E;
+--ink-2:#3D3A32;
+--ink-3:#6B665A;
+--ink-4:#9A9384;
+--ink-5:#BDB6A6;
+
+/* ── Rhine orange — the single brand chroma ────────── */
+--orange-1:#FBE3CE;
+--orange-2:#F2A868;
+--orange-3:#E8722A;
+--orange-4:#C9551A;
+--orange-5:#8E3A11;
+
+/* ── The three primaries, in vintage-print hue ──────
+   Deliberately off their base hues, the way 1960s
+   4-colour process and faded Kodachrome reproduce them. */
+--red-1:#F2CFC7;
+--red-3:#C4392C;
+--red-5:#8A2419;
+--blue-1:#C9D6E2;
+--blue-3:#2E5F92;
+--blue-5:#1B3C61;
+--yellow-1:#F6E6BC;
+--yellow-3:#E3B23C;
+--yellow-5:#9E7717;
+
+/* ── Deep-space set (the "inextinguishable" register) ── */
+--void-0:#0B0C0E;
+--void-1:#15181C;
+--void-2:#232830;
+
+/* ── Semantic surfaces ─────────────────────────────── */
+--surface-page:var(--paper-1);
+--surface-card:var(--paper-0);
+--surface-sunken:var(--paper-2);
+--surface-metal:linear-gradient(180deg,#F7F3EA 0%,#E4DCCC 52%,#EFE9DC 53%,#D9CFBB 100%);
+--surface-inverse:var(--ink-0);
+--surface-accent:var(--orange-3);
+--surface-accent-soft:var(--orange-1);
+
+/* ── Semantic text ─────────────────────────────────── */
+--text-body:var(--ink-1);
+--text-strong:var(--ink-0);
+--text-muted:var(--ink-3);
+--text-faint:var(--ink-4);
+--text-accent:var(--orange-4);
+--text-on-accent:#FFFFFF;
+--text-on-inverse:var(--paper-1);
+
+/* ── Lines. Hairlines are structural here, not decorative ── */
+--line-hair:var(--ink-5);
+--line-rule:var(--ink-3);
+--line-heavy:var(--ink-0);
+--line-accent:var(--orange-3);
+
+/* ── Status ────────────────────────────────────────── */
+--status-ok:var(--blue-3);
+--status-warn:var(--yellow-3);
+--status-danger:var(--red-3);
+--status-active:var(--orange-3);
+
+/* ── Motif fills ───────────────────────────────────── */
+--grid-line:rgba(107,102,90,.16);
+--punch-dot:rgba(107,102,90,.34);
+--scan-tint:rgba(232,114,42,.08);
+}

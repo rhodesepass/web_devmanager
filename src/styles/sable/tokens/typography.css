@@ -1,0 +1,66 @@
+html.sable-dark{
+/* ---- Families ----
+   思源黑体 (Noto Sans SC) is the workhorse: names, labels, body, UI — everything.
+   思源宋体 (Noto Serif SC) is the counterpoint: chapter/section display only.
+   The Latin faces are chained AHEAD of the Han faces so mixed strings keep
+   the tighter Latin fit; Han glyphs fall through to Noto. */
+--font-han-sans:'Noto Sans SC','Source Han Sans SC','思源黑体',system-ui,sans-serif;
+--font-han-serif:'Noto Serif SC','Source Han Serif SC','思源宋体',Georgia,serif;
+--font-display:'Chakra Petch',var(--font-han-sans);
+--font-serif-display:'Chakra Petch',var(--font-han-serif);
+--font-ui:'Barlow',var(--font-han-sans);
+--font-condensed:'Barlow Semi Condensed',var(--font-han-sans);
+--font-mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',monospace;
+
+/* ---- Size scale (1.25 major third, 14px base) ---- */
+--text-3xs:10px;
+--text-2xs:11px;
+--text-xs:12px;
+--text-sm:13px;
+--text-base:14px;
+--text-md:16px;
+--text-lg:20px;
+--text-xl:25px;
+--text-2xl:31px;
+--text-3xl:39px;
+--text-4xl:49px;
+--text-5xl:61px;
+--text-6xl:76px;
+
+/* ---- Weights ---- */
+--weight-regular:400; /* @kind other */
+--weight-medium:500; /* @kind other */
+--weight-semibold:600; /* @kind other */
+--weight-bold:700; /* @kind other */
+--weight-heavy:900; /* @kind other */
+
+/* ---- Line heights ---- */
+--leading-flat:1; /* @kind other */
+--leading-tight:1.15; /* @kind other */
+--leading-snug:1.32; /* @kind other */
+--leading-normal:1.5; /* @kind other */
+--leading-loose:1.7; /* @kind other */
+
+/* ---- Tracking. Wide tracking on caps is a core signature. ---- */
+--tracking-tight:-0.02em; /* @kind other */
+--tracking-normal:0; /* @kind other */
+--tracking-wide:0.06em; /* @kind other */
+--tracking-wider:0.14em; /* @kind other */
+--tracking-widest:0.24em; /* @kind other */
+/* CJK tracking. The source analysis specifies -100 (= -0.1em) on operator names and
+   profile rows, and 0 on descriptive body. Han text is NEVER positively tracked. */
+--tracking-han-name:-0.1em; /* @kind other */
+--tracking-han-body:0em; /* @kind other */
+
+/* ---- Composed roles ---- */
+--type-display:var(--weight-bold) var(--text-4xl)/var(--leading-tight) var(--font-display);
+--type-han-name:900 var(--text-2xl)/1.1 var(--font-han-sans);
+--type-han-serif:600 var(--text-xl)/1.4 var(--font-han-serif);
+--type-han-body:400 var(--text-base)/1.75 var(--font-han-sans); /* @kind other */
+--type-title:var(--weight-bold) var(--text-2xl)/var(--leading-tight) var(--font-display); /* @kind other */
+--type-heading:var(--weight-semibold) var(--text-lg)/var(--leading-snug) var(--font-display); /* @kind other */
+--type-body:var(--weight-regular) var(--text-base)/var(--leading-normal) var(--font-ui); /* @kind other */
+--type-body-sm:var(--weight-regular) var(--text-sm)/var(--leading-normal) var(--font-ui); /* @kind other */
+--type-label:var(--weight-600) var(--text-2xs)/var(--leading-flat) var(--font-condensed); /* @kind other */
+--type-data:var(--weight-medium) var(--text-xs)/var(--leading-snug) var(--font-mono); /* @kind other */
+}

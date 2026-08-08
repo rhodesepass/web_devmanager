@@ -1,0 +1,42 @@
+html.lt-light{
+--font-display:"Jost","Futura","Century Gothic",system-ui,sans-serif;
+--font-body:"Jost","Futura",system-ui,sans-serif;
+--font-cjk:"Noto Sans SC","Jost",system-ui,sans-serif;
+--font-mono:"Space Mono","IBM Plex Mono",ui-monospace,monospace;
+
+/* Two registers. TIGHT = the wordmark register: heavy strokes, negative
+   tracking, no air inside the word. WIDE = the deep-space register:
+   light strokes, enormous tracking, vastness. */
+--track-tight:-0.03em;
+--track-normal:0;/* @kind font */
+--track-wide:0.14em;
+--track-vast:0.42em;
+
+--fs-display-1:72px;
+--fs-display-2:52px;
+--fs-title-1:34px;
+--fs-title-2:26px;
+--fs-heading:19px;
+--fs-body:15px;
+--fs-small:13px;
+--fs-micro:11px;
+
+--lh-display:0.92;/* @kind font */
+--lh-title:1.08;/* @kind font */
+--lh-body:1.55;/* @kind font */
+--lh-tight:1.2;/* @kind font */
+
+--fw-light:300;/* @kind font */
+--fw-regular:400;/* @kind font */
+--fw-medium:500;/* @kind font */
+--fw-semibold:600;/* @kind font */
+--fw-bold:700;/* @kind font */
+
+/* Semantic type roles */
+--type-wordmark:var(--fw-bold) var(--fs-display-1)/var(--lh-display) var(--font-display);
+--type-title:var(--fw-semibold) var(--fs-title-1)/var(--lh-title) var(--font-display);
+--type-heading:var(--fw-medium) var(--fs-heading)/var(--lh-tight) var(--font-display);
+--type-body:var(--fw-regular) var(--fs-body)/var(--lh-body) var(--font-body);
+--type-label:var(--fw-medium) var(--fs-micro)/1.2 var(--font-display);
+--type-data:var(--fw-regular) var(--fs-small)/1.4 var(--font-mono);
+}

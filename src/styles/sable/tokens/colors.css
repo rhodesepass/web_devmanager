@@ -1,0 +1,92 @@
+html.sable-dark{
+/* ---- Base ramp: ink (near-black cool navy) ---- */
+--ink-950:#05070a;
+--ink-900:#0a0d13;
+--ink-850:#0f131b;
+--ink-800:#141924;
+--ink-700:#1b2130;
+--ink-600:#242c3d;
+--ink-500:#2f3a4e;
+--ink-400:#3d4a61;
+
+/* ---- Base ramp: steel (cool greys for text + hairlines) ---- */
+--steel-500:#4e5b6e;
+--steel-400:#68768a;
+--steel-300:#8b98aa;
+--steel-200:#aeb9c7;
+--steel-100:#ced6e0;
+
+/* ---- Base ramp: paper (inverted light panels) ---- */
+--paper-200:#d8d5cd;
+--paper-100:#e9e7e1;
+--paper-050:#f5f4f0;
+
+/* ---- Signal amber: the primary brand accent ---- */
+--amber-700:#8f5203;
+--amber-600:#c67806;
+--amber-500:#ffa11f;
+--amber-400:#ffb951;
+--amber-300:#ffd08a;
+
+/* ---- Holo blue: data, scans, selection, links ---- */
+--holo-700:#12497f;
+--holo-600:#1d6fc4;
+--holo-500:#3f9dff;
+--holo-400:#7cbeff;
+--holo-300:#b3daff;
+
+/* ---- Semantic hues ---- */
+--alert-600:#a3222c;
+--alert-500:#d93a45;
+--alert-400:#f0666f;
+--viridian-600:#1c8d69;
+--viridian-500:#2fbf8f;
+--viridian-400:#66d9b3;
+--violet-500:#8b6ff5;
+--violet-400:#ab95ff;
+
+/* ---- Surfaces ---- */
+--surface-void:var(--ink-950);
+--surface-base:var(--ink-900);
+--surface-raised:var(--ink-800);
+--surface-panel:var(--ink-850);
+--surface-inset:var(--ink-950);
+--surface-overlay:rgba(5,7,10,.82);
+--surface-invert:var(--paper-100);
+--surface-hover:rgba(255,255,255,.045);
+--surface-active:rgba(255,255,255,.09);
+--surface-selected:rgba(63,157,255,.12);
+
+/* ---- Text ---- */
+--text-primary:#eef1f5;
+--text-secondary:var(--steel-200);
+--text-tertiary:var(--steel-400);
+--text-disabled:var(--steel-500);
+--text-invert:var(--ink-900);
+--text-accent:var(--amber-500);
+--text-link:var(--holo-500);
+--text-link-hover:var(--holo-400);
+
+/* ---- Lines: hairlines are the structural language of this system ---- */
+--line-hairline:rgba(255,255,255,.08);
+--line-subtle:rgba(255,255,255,.14);
+--line-strong:rgba(255,255,255,.28);
+--line-accent:var(--amber-500);
+--line-holo:rgba(63,157,255,.45);
+--line-invert:rgba(10,13,19,.16);
+
+/* ---- Semantic status ---- */
+--status-ok:var(--viridian-500);
+--status-warn:var(--amber-500);
+--status-danger:var(--alert-500);
+--status-info:var(--holo-500);
+--status-special:var(--violet-500);
+
+/* ---- Component intents ---- */
+--action-primary-bg:var(--amber-500);
+--action-primary-fg:var(--ink-950);
+--action-primary-bg-hover:var(--amber-400);
+--action-primary-bg-active:var(--amber-600);
+--action-danger-bg:var(--alert-500);
+--action-danger-fg:#fff;
+}

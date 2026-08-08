@@ -4,16 +4,16 @@
       <v-col
         v-for="item in quickItems"
         :key="item.path"
-        cols="6"
+        cols="4"
       >
         <v-card
-          class="quick-action pa-3 text-center"
+          class="quick-action pa-2 text-center"
           rounded="lg"
           :to="item.path"
           variant="tonal"
         >
-          <v-icon class="mb-2" :icon="item.icon" size="28" />
-          <div class="text-body-2">{{ item.title }}</div>
+          <v-icon class="mb-1" :icon="item.icon" size="22" />
+          <div class="text-caption">{{ item.title }}</div>
         </v-card>
       </v-col>
     </v-row>

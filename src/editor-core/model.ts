@@ -222,9 +222,8 @@ export function createProject (canvas: CanvasSize = CANVAS_360): Project {
       intro: { tracks: [] },
     },
     introEnabled: false,
-    // 过渡默认给 fade 500ms（用户可改为硬切）
-    transitionLoop: { type: 'fade', durationUs: 500_000, backgroundColor: '#000000' },
-    transitionIn: { type: 'fade', durationUs: 500_000, backgroundColor: '#000000' },
+    transitionLoop: { type: 'fade', durationUs: 300_000, backgroundColor: '#000000' },
+    transitionIn: { type: 'fade', durationUs: 300_000, backgroundColor: '#000000' },
     encodePreset: 'animation',
     overlay: { type: 'none' },
     name: '未命名素材',
@@ -307,8 +306,8 @@ export function createDefaultKeyframe (canvas: CanvasSize, t = 0): Keyframe {
 export function createImageOverlay (): ImageOverlay {
   return {
     type: 'image',
-    appearTimeUs: 100_000,
-    durationUs: 1_000_000,
+    appearTimeUs: 500_000,
+    durationUs: 300_000,
     image: null,
   }
 }
@@ -316,7 +315,7 @@ export function createImageOverlay (): ImageOverlay {
 export function createArknightsOverlay (): ArknightsOverlay {
   return {
     type: 'arknights',
-    appearTimeUs: 100_000,
+    appearTimeUs: 500_000,
     operatorName: 'OPERATOR',
     operatorCode: 'ARKNIGHT - UNK0',
     barcodeText: 'OPERATOR - ARKNIGHTS',

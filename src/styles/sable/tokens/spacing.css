@@ -1,0 +1,32 @@
+html.sable-dark{
+/* 4px base grid; 2px half-step exists for hairline-adjacent insets */
+--space-0:0px;
+--space-px:1px;
+--space-half:2px;
+--space-1:4px;
+--space-2:8px;
+--space-3:12px;
+--space-4:16px;
+--space-5:20px;
+--space-6:24px;
+--space-8:32px;
+--space-10:40px;
+--space-12:48px;
+--space-16:64px;
+--space-20:80px;
+--space-24:96px;
+--space-32:128px;
+
+/* Control heights */
+--control-xs:24px;
+--control-sm:30px;
+--control-md:38px;
+--control-lg:48px;
+
+/* Layout */
+--layout-rail:56px;
+--layout-sidebar:264px;
+--layout-topbar:56px;
+--layout-gutter:24px;
+--layout-max:1440px;
+}

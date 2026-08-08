@@ -1,0 +1,19 @@
+html.sable-dark{
+/* Motion is mechanical: fast, linear-ish, no bounce, no spring overshoot.
+   Things snap into place or wipe across. Nothing eases in slowly. */
+--duration-instant:60ms; /* @kind other */
+--duration-fast:120ms; /* @kind other */
+--duration-base:180ms; /* @kind other */
+--duration-slow:280ms; /* @kind other */
+--duration-sweep:600ms; /* @kind other */
+
+--ease-mech:cubic-bezier(.2,0,0,1); /* @kind other */
+--ease-out:cubic-bezier(0,0,.2,1); /* @kind other */
+--ease-in:cubic-bezier(.4,0,1,1); /* @kind other */
+--ease-linear:linear; /* @kind other */
+
+--transition-control:background-color var(--duration-fast) var(--ease-mech),color var(--duration-fast) var(--ease-mech),border-color var(--duration-fast) var(--ease-mech),box-shadow var(--duration-fast) var(--ease-mech); /* @kind other */
+}
+@keyframes so-sweep{from{transform:translateX(-100%)}to{transform:translateX(200%)}}
+@keyframes so-blink{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes so-scan{from{background-position-y:0}to{background-position-y:3px}}

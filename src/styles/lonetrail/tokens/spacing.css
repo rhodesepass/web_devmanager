@@ -1,0 +1,28 @@
+html.lt-light{
+/* 4px base. The system is grid-first: everything snaps to the column
+   rhythm, and gutters are wide because empty space is the style. */
+--sp-0:0px;--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;
+--sp-6:24px;--sp-8:32px;--sp-10:40px;--sp-12:48px;--sp-16:64px;
+--sp-20:80px;--sp-24:96px;--sp-32:128px;
+
+--gutter:24px;
+--col:80px;
+--page-pad:48px;
+--page-max:1320px;
+
+/* Radii — almost none. Retrofuturist industrial print is square;
+   the only curves in the system are full circles (orbits, dials). */
+--radius-0:0px;
+--radius-1:2px;
+--radius-2:4px;
+--radius-pill:999px;
+--radius-circle:50%;
+
+--border-hair:1px;
+--border-rule:2px;
+--border-heavy:3px;
+
+/* The signature notch: corners cut, never rounded. */
+--notch:10px;
+--clip-notch:polygon(var(--notch) 0,100% 0,100% calc(100% - var(--notch)),calc(100% - var(--notch)) 100%,0 100%,0 var(--notch));/* @kind other */
+}
